@@ -1,17 +1,17 @@
-# connectlang_app
+# ConnectLang App
 
-ConnectLang mobile app
+App mobile (Flutter, Android/iOS) do ConnectLang, para os perfis **Aluno** e **Assinante**. Reaproveita 100% o mesmo backend Supabase do repo web (`verb-flow-hub`) — nenhum backend novo.
 
-## Getting Started
+- **Planejamento** (escopo, arquitetura, decisões): [planejamento.md](planejamento.md)
+- **Estado atual / como retomar o desenvolvimento**: [PROGRESSO.md](PROGRESSO.md)
 
-This project is a starting point for a Flutter application.
+## Setup rápido
 
-A few resources to get you started if this is your first Flutter project:
+```bash
+cp assets/.env.example assets/.env
+# preencher com os mesmos valores de VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY
+# do repo web (verb-flow-hub/.env)
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+flutter pub get
+flutter run
+```
