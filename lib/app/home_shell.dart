@@ -6,14 +6,16 @@ import '../features/dictation/dictation_home_page.dart';
 import '../features/library/library_list_page.dart';
 import '../features/notebook/notebook_list_page.dart';
 import '../features/placement/placement_home_page.dart';
+import '../features/study_coach/study_coach_home_page.dart';
 import '../features/vocabulary/vocabulary_list_page.dart';
 
 /// Placeholder de navegação por role — vira o shell real (bottom nav /
 /// drawer com as features) conforme os itens 2+ do roadmap forem entrando.
 class _LearnerHomeScaffold extends ConsumerWidget {
-  const _LearnerHomeScaffold({required this.title});
+  const _LearnerHomeScaffold({required this.title, this.showStudyCoach = false});
 
   final String title;
+  final bool showStudyCoach;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -77,6 +79,16 @@ class _LearnerHomeScaffold extends ConsumerWidget {
                 MaterialPageRoute(builder: (_) => const PlacementHomePage()),
               ),
             ),
+            if (showStudyCoach) ...[
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                icon: const Icon(Icons.auto_awesome),
+                label: const Text('Study Coach'),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const StudyCoachHomePage()),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -95,5 +107,5 @@ class SubscriberHomePage extends StatelessWidget {
   const SubscriberHomePage({super.key});
 
   @override
-  Widget build(BuildContext context) => const _LearnerHomeScaffold(title: 'ConnectLang');
+  Widget build(BuildContext context) => const _LearnerHomeScaffold(title: 'ConnectLang', showStudyCoach: true);
 }
