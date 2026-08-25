@@ -69,7 +69,7 @@ class AuthController extends AsyncNotifier<AppUser?> {
     try {
       final row = await supabase
           .from('profiles')
-          .select('id, full_name, email, role, is_active')
+          .select('id, full_name, email, role, is_active, profile_languages, cefr_levels')
           .eq('id', userId)
           .single();
 

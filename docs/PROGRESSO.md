@@ -69,6 +69,13 @@ Resumo do que já foi decidido e feito até agora, pra continuar numa sessão no
   - `production_demand_page.dart`: carrega a assignment, mostra proposta/critérios, textarea + envio, cartão de correção (explicação, versão corrigida, issues, forma natural). Só aparece no menu do Assinante (`home_shell.dart`), não do Aluno de escola.
   - **Não implementado ainda**: localização do conteúdo por idioma da UI (`studyCoachCopy.ts` — app só gera/mostra em português), histórico de planos anteriores, painel unificado de assignments (`LiaUnifiedTodayCard`), sincronização automática de conclusão de assignments a partir de outras telas (dictation/library completion), banner de sugestão/recalibração de CEFR.
   - Testado ponta a ponta no emulador com a conta assinante contra produção: gerar plano (chamada real à IA, ~30s, resposta em português com resumo/focos/3 próximos passos/evidências), ler o plano em cache numa segunda visita sem chamar a IA de novo, navegar de uma ação do plano pra tela do Ditado. Não testado ao vivo: `ProductionDemandPage` (o plano gerado não teve ação de produção pendente nesta conta) — o padrão de chamada (`functions.invoke`) é o mesmo já validado em `gradeProduction`/`tts-generate`.
+- **Perfil + Status da assinatura implementados** (as duas rotas do assinante que ainda não existiam no app — `/estudo/perfil` e a parte de leitura de `/assinatura`; reduzido de `SubscriberProfilePage.tsx`/`SubscriptionPage.tsx`):
+  - `AppUser` (`lib/core/session/app_user.dart`) ganhou `studyLanguages`/`cefrLevelByLanguage`, lidos agora pelo `AuthController` a partir de `profiles.profile_languages`/`profiles.cefr_levels` (mesmo parse de `parseStudyLanguages`/`parseCefrLevelsFromProfile` do web).
+  - `lib/features/profile/`: `profile_repository.dart` (`update` em `profiles` — só nome e idiomas de estudo) e `subscriber_profile_page.dart` (dados da conta editáveis, chips de idioma de estudo, nível CEFR por idioma com atalho pro Nivelamento).
+  - `lib/features/subscription/subscription_status_page.dart`: cartão só leitura (plano, status, fim do trial ou próxima cobrança) a partir do `SubscriptionInfo` já carregado no `AuthController` — sem chamada nova ao Supabase. Cancelar/trocar cartão/histórico de pagamentos ficam fora (política de compra só no site, seção 1 do planejamento.md).
+  - Acessível pelos botões "Perfil"/"Assinatura" no `home_shell.dart`, só pro Assinante.
+  - **Não implementado ainda**: aviso de cooldown de retake no nível por idioma, `SubscriberSkillProgress`, histórico de pagamentos, trocar cartão, cancelar assinatura, refazer nivelamento com idioma pré-selecionado (hoje sempre abre a tela de escolha de idioma do Nivelamento).
+  - Testado ponta a ponta no emulador com a conta assinante contra produção: ler perfil (nome/e-mail/idiomas/nível — o nível A1 em inglês bateu com o resultado do Nivelamento testado antes nesta sessão, confirmando que `placement_write_cefr` persiste e o Perfil lê certo), editar e salvar idiomas de estudo (adicionar Espanhol, confirmar refresh automático, reverter), e a tela de assinatura mostrando plano mensal/status ativa da conta de teste.
 
 ## Ambiente de desenvolvimento (nesta máquina)
 
@@ -106,6 +113,13 @@ flutter run
 
 ## Próximo passo
 
-Base + Vocabulário (fatia) + Caderno (fatia) + Biblioteca (fatia) + Ditado (fatia) + Nivelamento (fatia) + Study Coach/Produção sob demanda (fatia) prontos — itens 1 a 6 e 8 da seção 4 do `planejamento.md`. Falta o item 7, **Aluno de escola** (atividades, leitura/produção vinculadas, correções/feedback via `submissions`, aulas dadas via `lesson_plans` — só quem é aluno matriculado numa escola, não usado pelo assinante), o item 9 (tela de assinatura inativa — já existe, `SubscriptionInactivePage`, conferir se cobre tudo) e as lacunas com "Não implementado ainda" de cada feature já pronta. Não decidido ainda — perguntar ao usuário antes de escolher.
+Base + Vocabulário (fatia) + Caderno (fatia) + Biblioteca (fatia) + Ditado (fatia) + Nivelamento (fatia) + Study Coach/Produção sob demanda (fatia) + Perfil/Status da assinatura prontos — itens 1 a 6, 8 e parte do 9 da seção 4 do `planejamento.md`.
+
+Pro **assinante** especificamente, o que ainda falta (nessa ordem de prioridade, combinado com o usuário):
+1. Home/dashboard mais rico (hoje é só um placeholder com botões — `SubscriberDashboard.tsx` do web tem resumo de progresso, atalhos, avisos).
+2. Lacunas de IA nas features já prontas — correção/diagnóstico por IA no Ditado, perguntas de compreensão + TTS na Biblioteca, enrich/explicação por IA no Vocabulário.
+3. Lacunas menores: "começar do zero"/cooldown de retake no Nivelamento, categorias/arquivados/vocabulário base no Vocabulário, vínculo caderno↔biblioteca.
+
+Depois de zerar o assinante: item 7, **Aluno de escola** (atividades, leitura/produção vinculadas, correções/feedback via `submissions`, aulas dadas via `lesson_plans` — só quem é aluno matriculado numa escola, não usado pelo assinante; precisa de uma conta de teste de aluno vinculada a um professor com conteúdo real atribuído, ainda não confirmada). Não decidido ainda qual dos 3 itens do assinante começar — perguntar ao usuário.
 
 Nota pra próxima sessão de testes no emulador: o `adb shell input text` neste ambiente ocasionalmente perde/desloca caracteres digitados (visto tanto no e-mail/senha do login quanto em campos do app) — sempre conferir o `text=` real via `adb exec-out uiautomator dump` antes de submeter um formulário, em vez de confiar que o texto enviado chegou completo.
