@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/supabase_client.dart';
 import 'models/srs_rating.dart';
 import 'models/srs_schedule.dart';
+import 'models/vocab_enrich_result.dart';
 import 'models/vocabulary_entry.dart';
 
 const _mineColumns =
@@ -118,6 +119,23 @@ class VocabularyRepository {
       nextDifficulty: schedule.nextDifficulty,
       nextReviewAt: nextReviewAt,
     );
+  }
+
+  /// Chama a edge function `vocab-enrich` (IA) — mesma function do web,
+  /// só o modo "full" pra palavra isolada (`entryKind: 'word'`).
+  Future<VocabEnrichResult?> enrichTerm({required String term, required String language}) async {
+    final response = await supabase.functions.invoke(
+      'vocab-enrich',
+      body: {
+        'surfaceTerm': term.trim(),
+        'language': language,
+        'targetTranslationLocale': 'pt-BR',
+        'entryKind': 'word',
+      },
+    );
+    final data = response.data;
+    if (data is! Map) return null;
+    return VocabEnrichResult.fromRow(Map<String, dynamic>.from(data));
   }
 
   /// "Tirar da lista" — arquivamento suave (`archived_at`), igual ao web;

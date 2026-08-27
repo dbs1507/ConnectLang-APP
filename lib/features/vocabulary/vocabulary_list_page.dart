@@ -105,7 +105,18 @@ class _VocabularyListBody extends ConsumerWidget {
             itemBuilder: (context, index) {
               final entry = entries[index];
               return ListTile(
-                title: Text(entry.term),
+                title: Row(
+                  children: [
+                    Flexible(child: Text(entry.term)),
+                    if (entry.partOfSpeech != null) ...[
+                      const SizedBox(width: 6),
+                      Text(
+                        '(${entry.partOfSpeech})',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(fontStyle: FontStyle.italic),
+                      ),
+                    ],
+                  ],
+                ),
                 subtitle: Text(
                   '${entry.translation} · ${taughtLanguages[entry.language] ?? entry.language} · '
                   '${entry.isDue ? "pronta pra revisar" : formatSrsIntervalLabel(entry.intervalMinutes)}',
@@ -138,7 +149,10 @@ class _AddWordSheetState extends ConsumerState<_AddWordSheet> {
   final _contextController = TextEditingController();
   String _language = 'EN';
   bool _submitting = false;
+  bool _enriching = false;
   String? _error;
+  String? _aiDescription;
+  String? _aiPartOfSpeech;
 
   @override
   void dispose() {
@@ -146,6 +160,35 @@ class _AddWordSheetState extends ConsumerState<_AddWordSheet> {
     _translationController.dispose();
     _contextController.dispose();
     super.dispose();
+  }
+
+  Future<void> _enrichWithAi() async {
+    final term = _termController.text.trim();
+    if (term.isEmpty) {
+      setState(() => _error = 'Digite a palavra antes de preencher com IA.');
+      return;
+    }
+    setState(() {
+      _enriching = true;
+      _error = null;
+    });
+    try {
+      final result = await ref.read(vocabularyRepositoryProvider).enrichTerm(term: term, language: _language);
+      if (result == null) {
+        setState(() => _error = 'Não foi possível preencher com IA. Tente novamente.');
+        return;
+      }
+      setState(() {
+        if (result.translation.isNotEmpty) _translationController.text = result.translation;
+        if (result.example.isNotEmpty) _contextController.text = result.example;
+        _aiDescription = result.description.isNotEmpty ? result.description : null;
+        _aiPartOfSpeech = result.partOfSpeech;
+      });
+    } catch (_) {
+      setState(() => _error = 'Não foi possível preencher com IA. Tente novamente.');
+    } finally {
+      if (mounted) setState(() => _enriching = false);
+    }
   }
 
   Future<void> _submit() async {
@@ -160,6 +203,9 @@ class _AddWordSheetState extends ConsumerState<_AddWordSheet> {
             translation: _translationController.text,
             language: _language,
             context: _contextController.text,
+            example: _contextController.text.trim().isNotEmpty ? _contextController.text : null,
+            description: _aiDescription,
+            partOfSpeech: _aiPartOfSpeech,
           );
       if (mounted) Navigator.of(context).pop();
     } on DuplicateVocabularyTermException {
@@ -197,6 +243,14 @@ class _AddWordSheetState extends ConsumerState<_AddWordSheet> {
               controller: _termController,
               decoration: const InputDecoration(labelText: 'Palavra'),
               validator: (value) => (value == null || value.trim().isEmpty) ? 'Informe a palavra.' : null,
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _enriching ? null : _enrichWithAi,
+              icon: _enriching
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.auto_awesome, size: 18),
+              label: const Text('Preencher com IA'),
             ),
             const SizedBox(height: 12),
             TextFormField(
