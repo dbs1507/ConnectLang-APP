@@ -48,7 +48,7 @@ class DictationRepository {
   Future<void> saveAttempt({
     required String dictationItemId,
     required String answerText,
-    required DictationScoreResult score,
+    required DictationGradingResult score,
   }) async {
     await supabase.from('dictation_attempts').insert({
       'dictation_item_id': dictationItemId,
@@ -57,10 +57,41 @@ class DictationRepository {
       'answer_text': answerText,
       'score': score.score,
       'mistakes': score.mistakes.map((m) => m.toJson()).toList(),
-      'feedback': null,
-      'grading_source': 'local',
+      'feedback': score.feedback,
+      'grading_source': score.source,
       'play_count': 1,
       'slow_play_count': 1,
     });
+  }
+
+  /// Chama a edge function `dictation-grade` (IA) — o resultado é combinado
+  /// com a nota local via `mergeDictationGrades`; nunca substitui sozinho.
+  /// `null` (erro/timeout) faz `mergeDictationGrades` cair pro local, igual
+  /// ao web.
+  Future<Map<String, dynamic>?> fetchAiGrade({
+    required String expected,
+    required String answer,
+    required String language,
+    required DictationScoreResult local,
+  }) async {
+    try {
+      final response = await supabase.functions
+          .invoke(
+            'dictation-grade',
+            body: {
+              'expected': expected,
+              'answer': answer,
+              'language': language,
+              'localScore': local.score,
+              'localMistakes': local.mistakes.map((m) => m.toJson()).toList(),
+              'uiLanguage': 'pt',
+            },
+          )
+          .timeout(const Duration(seconds: 8));
+      final data = response.data;
+      return data is Map ? Map<String, dynamic>.from(data) : null;
+    } catch (_) {
+      return null;
+    }
   }
 }

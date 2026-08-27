@@ -2,10 +2,10 @@ import 'dart:math' as math;
 
 /// Porte exato do algoritmo local de correção de `src/lib/dictation.ts`
 /// (`scoreDictationAnswer`) — alinhamento de tokens via Levenshtein
-/// ponderado, igual ao web. O app não chama a edge function `dictation-grade`
-/// (IA) nesta fatia; toda nota vem por este caminho local, que é o mesmo
-/// fallback que o web usa quando a IA falha ou demora — `gradingSource`
-/// sempre 'local' aqui.
+/// ponderado, igual ao web. Nota local é sempre calculada primeiro (serve de
+/// base e de fallback quando a IA falha/demora); `mergeDictationGrades`
+/// combina com a resposta da edge function `dictation-grade`, porte de
+/// `mergeDictationGrades` do mesmo arquivo web.
 class DictationMistake {
   const DictationMistake({
     required this.expected,
@@ -246,4 +246,99 @@ DictationScoreResult scoreDictationAnswer(String expected, String answer) {
   if (mistakes.isNotEmpty) score = math.min(score, 99);
 
   return DictationScoreResult(score: score, mistakes: mistakes);
+}
+
+/// Resultado final (local ou combinado com a IA) — porte de
+/// `DictationGradingResult` do web.
+class DictationGradingResult {
+  const DictationGradingResult({required this.score, required this.mistakes, required this.source, this.feedback});
+
+  final int score;
+  final List<DictationMistake> mistakes;
+  final String source; // 'local' | 'hybrid'
+  final String? feedback;
+}
+
+DictationMistake _normalizeMistake(Map<String, dynamic> raw, int index) {
+  final note = (raw['note'] as String?)?.trim();
+  return DictationMistake(
+    expected: (raw['expected'] as String? ?? '').trim(),
+    answer: (raw['answer'] as String? ?? '').trim(),
+    index: (raw['index'] as num?)?.toInt() ?? index,
+    severity: raw['severity'] == 'minor' ? 'minor' : 'major',
+    note: (note?.isNotEmpty ?? false) ? note : null,
+  );
+}
+
+bool _isValidAiGrade(Map<String, dynamic>? raw, int expectedWordCount) {
+  if (raw == null) return false;
+  if (raw['score'] is! num) return false;
+  final mistakes = raw['mistakes'];
+  if (mistakes is! List) return false;
+  if (mistakes.length > expectedWordCount + 8) return false;
+  return mistakes.every((m) => m is Map);
+}
+
+/// Porte de `mergeDictationGrades` do web: combina a nota local (sempre
+/// calculada) com a resposta da edge function `dictation-grade`, com as
+/// mesmas salvaguardas (IA não pode zerar erros reais nem inflar a nota
+/// quando o local já achou erro grave/typo).
+DictationGradingResult mergeDictationGrades(DictationScoreResult local, Map<String, dynamic>? aiRow) {
+  final expectedWordCount = math.max(1, local.mistakes.length + 4);
+  if (!_isValidAiGrade(aiRow, expectedWordCount)) {
+    return DictationGradingResult(score: local.score, mistakes: local.mistakes, source: 'local');
+  }
+
+  final aiMistakesRaw = (aiRow!['mistakes'] as List).whereType<Map>().toList();
+  final mistakes = [
+    for (var i = 0; i < aiMistakesRaw.length; i++) _normalizeMistake(Map<String, dynamic>.from(aiMistakesRaw[i]), i),
+  ];
+  final localMajor = local.mistakes.where((m) => m.severity != 'minor').length;
+  final localMinor = local.mistakes.where((m) => m.severity == 'minor').length;
+  final aiMajor = mistakes.where((m) => m.severity != 'minor').length;
+  var score = (aiRow['score'] as num).round().clamp(0, 100);
+  final feedback = (aiRow['feedback'] as String?)?.trim();
+
+  // IA ignorou erros reais (omissões ou typos) — confia no local.
+  if (local.mistakes.isNotEmpty && mistakes.isEmpty) {
+    return DictationGradingResult(score: local.score, mistakes: local.mistakes, source: 'hybrid');
+  }
+
+  if (aiMajor > 0 && score == 100) score = local.score;
+  if (aiMajor > localMajor + 2) score = math.min(score, local.score);
+  // IA não pode inflar muito acima do local quando há erros graves.
+  if (localMajor > 0 && score > local.score + 10) score = local.score;
+  // Typos/acentos locais: não deixar a IA devolver 100%.
+  if (localMinor > 0) score = math.min(math.min(score, local.score), 99);
+  if (score < local.score - 25) score = local.score;
+  if ((localMajor > 0 || localMinor > 0 || mistakes.isNotEmpty) && score >= 100) {
+    score = math.min(99, local.score);
+  }
+
+  // Preferir notas locais de typo quando a IA não detalhou o minor.
+  final mergedMistakes = localMinor > 0 && mistakes.every((m) => m.severity != 'minor')
+      ? [...mistakes, ...local.mistakes.where((m) => m.severity == 'minor')]
+      : [
+          for (final m in mistakes)
+            if (m.note != null)
+              m
+            else
+              _withLocalTwinNote(m, local),
+        ];
+
+  return DictationGradingResult(
+    score: score,
+    mistakes: mergedMistakes,
+    feedback: (feedback?.isNotEmpty ?? false) ? feedback : null,
+    source: 'hybrid',
+  );
+}
+
+DictationMistake _withLocalTwinNote(DictationMistake m, DictationScoreResult local) {
+  for (final lm in local.mistakes) {
+    if (lm.severity == 'minor' && lm.expected == m.expected && lm.answer == m.answer && lm.note != null) {
+      return DictationMistake(expected: m.expected, answer: m.answer, index: m.index, severity: m.severity, note: lm.note);
+    }
+  }
+  return m;
 }

@@ -22,8 +22,9 @@ class _DictationSessionPageState extends ConsumerState<DictationSessionPage> {
 
   int _index = 0;
   bool _loadingAudio = false;
+  bool _checking = false;
   bool _saving = false;
-  DictationScoreResult? _checked;
+  DictationGradingResult? _checked;
   final List<int> _scores = [];
   String? _audioError;
 
@@ -71,9 +72,20 @@ class _DictationSessionPageState extends ConsumerState<DictationSessionPage> {
     }
   }
 
-  void _check() {
-    final result = scoreDictationAnswer(_currentItem.promptText, _answerController.text);
-    setState(() => _checked = result);
+  Future<void> _check() async {
+    final local = scoreDictationAnswer(_currentItem.promptText, _answerController.text);
+    setState(() => _checking = true);
+    final aiRow = await ref.read(dictationRepositoryProvider).fetchAiGrade(
+          expected: _currentItem.promptText,
+          answer: _answerController.text,
+          language: _currentItem.language,
+          local: local,
+        );
+    if (!mounted) return;
+    setState(() {
+      _checked = mergeDictationGrades(local, aiRow);
+      _checking = false;
+    });
   }
 
   Future<void> _saveAndNext() async {
@@ -167,8 +179,10 @@ class _DictationSessionPageState extends ConsumerState<DictationSessionPage> {
               const SizedBox(height: 16),
               if (checked == null)
                 FilledButton(
-                  onPressed: _answerController.text.trim().isEmpty ? null : _check,
-                  child: const Text('Verificar'),
+                  onPressed: (_checking || _answerController.text.trim().isEmpty) ? null : _check,
+                  child: _checking
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Text('Verificar'),
                 )
               else ...[
                 _ScoreCard(result: checked, expected: _currentItem.promptText),
@@ -191,7 +205,7 @@ class _DictationSessionPageState extends ConsumerState<DictationSessionPage> {
 class _ScoreCard extends StatelessWidget {
   const _ScoreCard({required this.result, required this.expected});
 
-  final DictationScoreResult result;
+  final DictationGradingResult result;
   final String expected;
 
   @override
@@ -208,9 +222,21 @@ class _ScoreCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('${result.score}%', style: Theme.of(context).textTheme.headlineMedium?.copyWith(color: color)),
+            Row(
+              children: [
+                Text('${result.score}%', style: Theme.of(context).textTheme.headlineMedium?.copyWith(color: color)),
+                if (result.source == 'hybrid') ...[
+                  const SizedBox(width: 8),
+                  Icon(Icons.auto_awesome, size: 16, color: Theme.of(context).colorScheme.primary),
+                ],
+              ],
+            ),
             const SizedBox(height: 8),
             Text('Frase correta: $expected'),
+            if (result.feedback != null) ...[
+              const SizedBox(height: 8),
+              Text(result.feedback!, style: Theme.of(context).textTheme.bodyMedium),
+            ],
             if (result.mistakes.isNotEmpty) ...[
               const SizedBox(height: 12),
               const Text('O que ajustar:', style: TextStyle(fontWeight: FontWeight.bold)),
