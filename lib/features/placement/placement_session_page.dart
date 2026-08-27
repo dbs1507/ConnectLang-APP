@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
@@ -136,7 +138,9 @@ class _PlacementSessionPageState extends ConsumerState<PlacementSessionPage> {
       }
       await _player.setUrl(url);
       await _player.seek(Duration.zero);
-      await _player.play();
+      // `play()` só resolve quando a faixa termina (ou é interrompida) —
+      // não podemos aguardar aqui ou o botão fica travado até o fim do áudio.
+      unawaited(_player.play());
     } catch (_) {
       if (mounted) setState(() => _audioError = 'Não foi possível tocar o áudio.');
     } finally {
