@@ -1,11 +1,14 @@
 import '../../core/supabase_client.dart';
 import 'models/placement_result.dart';
+import 'models/placement_retake_status.dart';
 import 'models/placement_scoring.dart';
 
-/// Espelha `src/lib/placementTest.ts` — só o caminho "test" (adaptativo)
-/// usado por Aluno/Assinante. Fica fora desta fatia: `start_zero` ("começar
-/// do zero"), cooldown/pedido de retake, e as ferramentas de admin (gerar
-/// itens com IA, reparar duplicatas, matriz de cobertura).
+/// Espelha `src/lib/placementTest.ts` — o caminho "test" (adaptativo) e
+/// "start_zero" ("começar do zero"), com checagem de cooldown de retake pra
+/// ambos os papéis. Fica fora desta fatia: pedido de retake do aluno de
+/// escola pro professor (`placementRetakeRequest.ts`), atalho pra sugestão
+/// do Coach, e as ferramentas de admin (gerar itens com IA, reparar
+/// duplicatas, matriz de cobertura).
 ///
 /// Os RPCs (`security definer`) resolvem o usuário via `auth.uid()`, então o
 /// repositório não precisa do id do estudante — diferente do Ditado, que
@@ -23,8 +26,29 @@ class PlacementRepository {
     return data == true;
   }
 
+  /// `placement_can_retake` (assinante, cooldown de 14 dias/15 práticas com
+  /// janela de graça de 72h) ou `placement_can_retake_student` (aluno de
+  /// escola, liberado só por concessão do professor) — a mesma escolha de
+  /// RPC que o web faz por `isStudentRole`.
+  Future<PlacementRetakeStatus> fetchCanRetake({required String language, required bool isStudent}) async {
+    try {
+      final data = isStudent
+          ? await supabase.rpc('placement_can_retake_student', params: {'p_language': language, 'p_user_id': null})
+          : await supabase.rpc('placement_can_retake', params: {'p_language': language, 'p_suggestion_id': null});
+      return PlacementRetakeStatus.fromRow(_asRow(data));
+    } catch (_) {
+      return PlacementRetakeStatus.allowedFallback;
+    }
+  }
+
   Future<PlacementStepResult> startTest(String language) async {
     final data = await supabase.rpc('placement_start_test', params: {'p_language': language});
+    return PlacementStepResult.fromRow(_asRow(data), fallbackLanguage: language);
+  }
+
+  /// "Começar do zero": pula o teste e define o nível como A1 direto.
+  Future<PlacementStepResult> startZero(String language) async {
+    final data = await supabase.rpc('placement_start_zero', params: {'p_language': language});
     return PlacementStepResult.fromRow(_asRow(data), fallbackLanguage: language);
   }
 
