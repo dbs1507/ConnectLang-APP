@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../library/library_controller.dart';
+import '../library/models/library_text.dart';
 import '../vocabulary/models/vocabulary_entry.dart';
 import '../vocabulary/vocabulary_controller.dart';
 import 'models/notebook_entry.dart';
@@ -131,6 +133,7 @@ class _NotebookEntrySheetState extends ConsumerState<_NotebookEntrySheet> {
   late final TextEditingController _contentController;
   late String _language;
   VocabularyEntry? _linkedVocabulary;
+  LibraryText? _linkedText;
   bool _submitting = false;
   String? _error;
 
@@ -155,24 +158,35 @@ class _NotebookEntrySheetState extends ConsumerState<_NotebookEntrySheet> {
     });
     try {
       final notifier = ref.read(notebookControllerProvider.notifier);
+      NotebookLinkType? linkType;
+      String? linkId;
+      String? linkLabel;
+      if (_linkedVocabulary != null) {
+        linkType = NotebookLinkType.vocabulary;
+        linkId = _linkedVocabulary!.id;
+        linkLabel = _linkedVocabulary!.term;
+      } else if (_linkedText != null) {
+        linkType = NotebookLinkType.libraryText;
+        linkId = _linkedText!.id;
+        linkLabel = _linkedText!.title;
+      }
+
       if (widget.entry == null) {
         await notifier.addEntry(
           content: _contentController.text,
           language: _language,
-          linkType: _linkedVocabulary != null ? NotebookLinkType.vocabulary : null,
-          linkId: _linkedVocabulary?.id,
-          linkLabel: _linkedVocabulary?.term,
+          linkType: linkType,
+          linkId: linkId,
+          linkLabel: linkLabel,
         );
       } else {
         await notifier.updateEntry(
           entryId: widget.entry!.id,
           content: _contentController.text,
           language: _language,
-          linkType: _linkedVocabulary != null
-              ? NotebookLinkType.vocabulary
-              : widget.entry!.linkType,
-          linkId: _linkedVocabulary?.id ?? widget.entry!.linkId,
-          linkLabel: _linkedVocabulary?.term ?? widget.entry!.linkLabel,
+          linkType: linkType ?? widget.entry!.linkType,
+          linkId: linkId ?? widget.entry!.linkId,
+          linkLabel: linkLabel ?? widget.entry!.linkLabel,
         );
       }
       if (mounted) Navigator.of(context).pop();
@@ -186,6 +200,7 @@ class _NotebookEntrySheetState extends ConsumerState<_NotebookEntrySheet> {
   @override
   Widget build(BuildContext context) {
     final vocabularyOptions = ref.watch(vocabularyControllerProvider).value ?? const <VocabularyEntry>[];
+    final textOptions = ref.watch(libraryControllerProvider).value?.texts ?? const <LibraryText>[];
     final isEditing = widget.entry != null;
 
     return Padding(
@@ -227,7 +242,27 @@ class _NotebookEntrySheetState extends ConsumerState<_NotebookEntrySheet> {
                     for (final vocab in vocabularyOptions)
                       DropdownMenuItem(value: vocab, child: Text(vocab.term)),
                   ],
-                  onChanged: (value) => setState(() => _linkedVocabulary = value),
+                  onChanged: (value) => setState(() {
+                    _linkedVocabulary = value;
+                    if (value != null) _linkedText = null;
+                  }),
+                ),
+              ],
+              if (textOptions.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                DropdownButtonFormField<LibraryText?>(
+                  initialValue: _linkedText,
+                  decoration: const InputDecoration(labelText: 'Vincular a um texto da biblioteca (opcional)'),
+                  isExpanded: true,
+                  items: [
+                    const DropdownMenuItem(value: null, child: Text('Nenhum')),
+                    for (final text in textOptions)
+                      DropdownMenuItem(value: text, child: Text(text.title, overflow: TextOverflow.ellipsis)),
+                  ],
+                  onChanged: (value) => setState(() {
+                    _linkedText = value;
+                    if (value != null) _linkedVocabulary = null;
+                  }),
                 ),
               ],
               if (_error != null) ...[
