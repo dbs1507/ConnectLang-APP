@@ -20,11 +20,11 @@ enum NotebookLinkType {
   }
 
   String get raw => switch (this) {
-        lessonPlan => 'lesson_plan',
-        activity => 'activity',
-        libraryText => 'library_text',
-        vocabulary => 'vocabulary',
-      };
+    lessonPlan => 'lesson_plan',
+    activity => 'activity',
+    libraryText => 'library_text',
+    vocabulary => 'vocabulary',
+  };
 }
 
 enum NotebookEntryKind {
@@ -48,6 +48,7 @@ class NotebookEntry {
     this.linkId,
     this.linkLabel,
     this.title,
+    this.reviewedAt,
   });
 
   final String id;
@@ -58,8 +59,12 @@ class NotebookEntry {
   final String? linkId;
   final String? linkLabel;
   final String? title;
+  final DateTime? reviewedAt;
   final DateTime createdAt;
   final DateTime updatedAt;
+
+  bool get isUnreviewedAi =>
+      entryKind == NotebookEntryKind.aiExplanation && reviewedAt == null;
 
   factory NotebookEntry.fromRow(Map<String, dynamic> row) {
     return NotebookEntry(
@@ -71,6 +76,7 @@ class NotebookEntry {
       linkId: row['link_id'] as String?,
       linkLabel: row['link_label'] as String?,
       title: row['title'] as String?,
+      reviewedAt: DateTime.tryParse(row['reviewed_at'] as String? ?? ''),
       createdAt: DateTime.parse(row['created_at'] as String),
       updatedAt: DateTime.parse(row['updated_at'] as String),
     );

@@ -27,7 +27,8 @@ class PlacementRetakeStatus {
       allowed: row['allowed'] == true,
       reason: row['reason'] as String? ?? '',
       daysRemaining: (row['daysRemaining'] as num?)?.toInt() ?? 0,
-      practiceEventsRemaining: (row['practiceEventsRemaining'] as num?)?.toInt() ?? 0,
+      practiceEventsRemaining:
+          (row['practiceEventsRemaining'] as num?)?.toInt() ?? 0,
     );
   }
 

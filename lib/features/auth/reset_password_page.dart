@@ -3,26 +3,28 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/supabase_client.dart';
 
-/// Envia o e-mail de redefinição de senha. O link usa o esquema
-/// `connectlang://redefinir-senha` (precisa estar nas Redirect URLs do
-/// Supabase). A rota `/redefinir-senha` é a mesma do site.
-class ForgotPasswordPage extends StatefulWidget {
-  const ForgotPasswordPage({super.key});
+/// Redefine a senha depois do link de recuperação (`/redefinir-senha` no
+/// site, `connectlang://redefinir-senha` no app).
+class ResetPasswordPage extends StatefulWidget {
+  const ResetPasswordPage({super.key});
 
   @override
-  State<ForgotPasswordPage> createState() => _ForgotPasswordPageState();
+  State<ResetPasswordPage> createState() => _ResetPasswordPageState();
 }
 
-class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
+class _ResetPasswordPageState extends State<ResetPasswordPage> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _confirmController = TextEditingController();
   bool _submitting = false;
-  bool _sent = false;
+  bool _obscure = true;
   String? _error;
+  bool _done = false;
 
   @override
   void dispose() {
-    _emailController.dispose();
+    _passwordController.dispose();
+    _confirmController.dispose();
     super.dispose();
   }
 
@@ -33,16 +35,16 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
       _error = null;
     });
     try {
-      await supabase.auth.resetPasswordForEmail(
-        _emailController.text.trim(),
-        redirectTo: 'connectlang://redefinir-senha',
+      await supabase.auth.updateUser(
+        UserAttributes(password: _passwordController.text),
       );
-      if (mounted) setState(() => _sent = true);
+      if (mounted) setState(() => _done = true);
     } on AuthException catch (e) {
       setState(() => _error = e.message);
     } catch (_) {
       setState(
-        () => _error = 'Não foi possível enviar o e-mail. Tente novamente.',
+        () => _error =
+            'Não foi possível salvar a nova senha. Tente o link de novo.',
       );
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -52,25 +54,25 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Recuperar senha')),
+      appBar: AppBar(title: const Text('Nova senha')),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 400),
-              child: _sent
+              child: _done
                   ? Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
-                          Icons.mark_email_read,
+                          Icons.check_circle,
                           size: 48,
                           color: Theme.of(context).colorScheme.primary,
                         ),
                         const SizedBox(height: 16),
                         const Text(
-                          'Se esse e-mail estiver cadastrado, você vai receber um link para redefinir sua senha.',
+                          'Senha atualizada. Você já pode entrar com ela.',
                           textAlign: TextAlign.center,
                         ),
                       ],
@@ -81,22 +83,39 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          const Text(
-                            'Informe seu e-mail para receber o link de redefinição de senha.',
-                          ),
+                          const Text('Digite a nova senha pra esta conta.'),
                           const SizedBox(height: 16),
                           TextFormField(
-                            controller: _emailController,
-                            keyboardType: TextInputType.emailAddress,
-                            autofillHints: const [AutofillHints.email],
-                            decoration: const InputDecoration(
-                              labelText: 'E-mail',
+                            controller: _passwordController,
+                            obscureText: _obscure,
+                            decoration: InputDecoration(
+                              labelText: 'Nova senha',
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _obscure
+                                      ? Icons.visibility
+                                      : Icons.visibility_off,
+                                ),
+                                onPressed: () =>
+                                    setState(() => _obscure = !_obscure),
+                              ),
                             ),
                             validator: (value) =>
-                                (value == null || value.trim().isEmpty)
-                                ? 'Informe seu e-mail.'
+                                (value == null || value.length < 6)
+                                ? 'Use pelo menos 6 caracteres.'
                                 : null,
-                            onFieldSubmitted: (_) => _submit(),
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _confirmController,
+                            obscureText: _obscure,
+                            decoration: const InputDecoration(
+                              labelText: 'Confirmar senha',
+                            ),
+                            validator: (value) =>
+                                value != _passwordController.text
+                                ? 'As senhas não coincidem.'
+                                : null,
                           ),
                           if (_error != null) ...[
                             const SizedBox(height: 8),
@@ -118,7 +137,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                                       strokeWidth: 2,
                                     ),
                                   )
-                                : const Text('Enviar link'),
+                                : const Text('Salvar senha'),
                           ),
                         ],
                       ),

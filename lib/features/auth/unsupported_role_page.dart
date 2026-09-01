@@ -18,7 +18,11 @@ class UnsupportedRolePage extends ConsumerWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.info_outline, size: 48, color: Theme.of(context).colorScheme.primary),
+                Icon(
+                  Icons.info_outline,
+                  size: 48,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
                 const SizedBox(height: 16),
                 const Text(
                   'Este app é só para Aluno e Assinante.\nAcesse pelo site com esta conta.',
@@ -26,7 +30,8 @@ class UnsupportedRolePage extends ConsumerWidget {
                 ),
                 const SizedBox(height: 24),
                 FilledButton(
-                  onPressed: () => ref.read(authControllerProvider.notifier).logout(),
+                  onPressed: () =>
+                      ref.read(authControllerProvider.notifier).logout(),
                   child: const Text('Sair'),
                 ),
               ],

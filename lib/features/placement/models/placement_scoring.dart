@@ -24,7 +24,9 @@ String dictationScoreToCefr(int score, String itemCefr) {
     drop = math.min(idx, 4);
   }
   final resultIdx = math.max(0, idx - drop);
-  return resultIdx < placementCefrLadder.length ? placementCefrLadder[resultIdx] : 'A1';
+  return resultIdx < placementCefrLadder.length
+      ? placementCefrLadder[resultIdx]
+      : 'A1';
 }
 
 /// Feedback de produção: "precisa melhorar" (UI vermelha).
@@ -36,19 +38,32 @@ bool placementProductionNeedsWork({
   String answer = '',
   String? sourcePt,
 }) {
-  if (dictationScore != null && dictationScore < placementDictationKeepScore) return true;
+  if (dictationScore != null && dictationScore < placementDictationKeepScore) {
+    return true;
+  }
   if (showModel) return true;
   if (productionCefr != null && promptCefr != null) {
-    final gap = placementCefrLadder.indexOf(promptCefr) - placementCefrLadder.indexOf(productionCefr);
+    final gap =
+        placementCefrLadder.indexOf(promptCefr) -
+        placementCefrLadder.indexOf(productionCefr);
     if (gap >= 1) return true;
   }
   final trimmedAnswer = answer.trim();
   final trimmedSource = (sourcePt ?? '').trim();
   if (trimmedAnswer.isNotEmpty && trimmedSource.isNotEmpty) {
-    final words = trimmedAnswer.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
-    if (words <= 4 || trimmedAnswer.length / math.max(trimmedSource.length, 1) < 0.45) return true;
+    final words = trimmedAnswer
+        .split(RegExp(r'\s+'))
+        .where((w) => w.isNotEmpty)
+        .length;
+    if (words <= 4 ||
+        trimmedAnswer.length / math.max(trimmedSource.length, 1) < 0.45) {
+      return true;
+    }
   } else if (trimmedAnswer.isNotEmpty) {
-    final words = trimmedAnswer.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
+    final words = trimmedAnswer
+        .split(RegExp(r'\s+'))
+        .where((w) => w.isNotEmpty)
+        .length;
     if (words < 6) return true;
   }
   return false;
@@ -63,7 +78,9 @@ String? placementSoftPassCefr({
   required bool needsWork,
 }) {
   if (productionCefr == null) return null;
-  final gap = placementCefrLadder.indexOf(itemCefr) - placementCefrLadder.indexOf(productionCefr);
+  final gap =
+      placementCefrLadder.indexOf(itemCefr) -
+      placementCefrLadder.indexOf(productionCefr);
   if (gap == 0 || (gap == 1 && !needsWork)) return itemCefr;
   return productionCefr;
 }

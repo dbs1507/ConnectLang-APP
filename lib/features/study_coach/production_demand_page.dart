@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../notebook/notebook_fab.dart';
 import 'models/production_assignment.dart';
 import 'study_coach_controller.dart';
 
@@ -14,7 +15,8 @@ class ProductionDemandPage extends ConsumerStatefulWidget {
   final String assignmentId;
 
   @override
-  ConsumerState<ProductionDemandPage> createState() => _ProductionDemandPageState();
+  ConsumerState<ProductionDemandPage> createState() =>
+      _ProductionDemandPageState();
 }
 
 class _ProductionDemandPageState extends ConsumerState<ProductionDemandPage> {
@@ -46,14 +48,18 @@ class _ProductionDemandPageState extends ConsumerState<ProductionDemandPage> {
       _loadError = null;
     });
     try {
-      final assignment = await ref.read(studyCoachRepositoryProvider).fetchAssignment(widget.assignmentId);
+      final assignment = await ref
+          .read(studyCoachRepositoryProvider)
+          .fetchAssignment(widget.assignmentId);
       if (!mounted) return;
       setState(() {
         _assignment = assignment;
         if (assignment == null) _loadError = 'Tarefa não encontrada.';
       });
     } catch (_) {
-      if (mounted) setState(() => _loadError = 'Não foi possível carregar a tarefa.');
+      if (mounted) {
+        setState(() => _loadError = 'Não foi possível carregar a tarefa.');
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -64,7 +70,10 @@ class _ProductionDemandPageState extends ConsumerState<ProductionDemandPage> {
     if (assignment == null || _submitting) return;
     final sentence = _textController.text.trim();
     if (sentence.length < 20) {
-      setState(() => _submitError = 'Escreva pelo menos algumas frases (mínimo 20 caracteres).');
+      setState(
+        () => _submitError =
+            'Escreva pelo menos algumas frases (mínimo 20 caracteres).',
+      );
       return;
     }
     setState(() {
@@ -72,7 +81,9 @@ class _ProductionDemandPageState extends ConsumerState<ProductionDemandPage> {
       _submitError = null;
     });
     try {
-      final result = await ref.read(studyCoachRepositoryProvider).gradeProduction(
+      final result = await ref
+          .read(studyCoachRepositoryProvider)
+          .gradeProduction(
             sentence: sentence,
             language: assignment.language,
             cefr: assignment.targetCefr.isEmpty ? null : assignment.targetCefr,
@@ -81,7 +92,12 @@ class _ProductionDemandPageState extends ConsumerState<ProductionDemandPage> {
       if (!mounted) return;
       setState(() => _result = result);
     } catch (_) {
-      if (mounted) setState(() => _submitError = 'Não foi possível corrigir o texto. Tente novamente.');
+      if (mounted) {
+        setState(
+          () => _submitError =
+              'Não foi possível corrigir o texto. Tente novamente.',
+        );
+      }
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -90,18 +106,19 @@ class _ProductionDemandPageState extends ConsumerState<ProductionDemandPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      floatingActionButton: const NotebookFab(),
       appBar: AppBar(title: const Text('Produção sob demanda')),
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _assignment == null
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(_loadError ?? 'Tarefa não encontrada.'),
-                    ),
-                  )
-                : _buildContent(context, _assignment!),
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(_loadError ?? 'Tarefa não encontrada.'),
+                ),
+              )
+            : _buildContent(context, _assignment!),
       ),
     );
   }
@@ -117,14 +134,18 @@ class _ProductionDemandPageState extends ConsumerState<ProductionDemandPage> {
         ),
         if (assignment.reason.isNotEmpty) ...[
           const SizedBox(height: 4),
-          Text(assignment.reason, style: Theme.of(context).textTheme.bodyMedium),
+          Text(
+            assignment.reason,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
         ],
         const SizedBox(height: 12),
         Wrap(
           spacing: 8,
           children: [
             Chip(label: Text(assignment.language)),
-            if (assignment.targetCefr.isNotEmpty) Chip(label: Text(assignment.targetCefr)),
+            if (assignment.targetCefr.isNotEmpty)
+              Chip(label: Text(assignment.targetCefr)),
           ],
         ),
         const SizedBox(height: 20),
@@ -135,7 +156,10 @@ class _ProductionDemandPageState extends ConsumerState<ProductionDemandPage> {
           const SizedBox(height: 16),
           Text('Critérios', style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: 4),
-          Text(assignment.criteria, style: Theme.of(context).textTheme.bodyMedium),
+          Text(
+            assignment.criteria,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
         ],
         const SizedBox(height: 20),
         if (done && _result == null) ...[
@@ -157,17 +181,27 @@ class _ProductionDemandPageState extends ConsumerState<ProductionDemandPage> {
             minLines: 8,
             maxLines: 14,
             enabled: !_submitting,
-            decoration: const InputDecoration(labelText: 'Escreva sua produção', alignLabelWithHint: true),
+            decoration: const InputDecoration(
+              labelText: 'Escreva sua produção',
+              alignLabelWithHint: true,
+            ),
           ),
           const SizedBox(height: 12),
           if (_submitError != null) ...[
-            Text(_submitError!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            Text(
+              _submitError!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
             const SizedBox(height: 8),
           ],
           FilledButton(
             onPressed: _submitting ? null : _submit,
             child: _submitting
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : const Text('Enviar'),
           ),
         ],
@@ -189,20 +223,28 @@ class _ProductionDemandPageState extends ConsumerState<ProductionDemandPage> {
                 children: [
                   Icon(Icons.check_circle, color: Colors.green.shade700),
                   const SizedBox(width: 8),
-                  Text('Correção', style: Theme.of(context).textTheme.titleMedium),
+                  Text(
+                    'Correção',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
                 ],
               ),
               const SizedBox(height: 12),
               Text(result.explanation),
               if (!result.isAlreadyGood) ...[
                 const SizedBox(height: 12),
-                Text('Versão corrigida', style: Theme.of(context).textTheme.titleSmall),
+                Text(
+                  'Versão corrigida',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
                 const SizedBox(height: 4),
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(result.corrected),
@@ -216,15 +258,25 @@ class _ProductionDemandPageState extends ConsumerState<ProductionDemandPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('${issue.span} → ${issue.fix}', style: const TextStyle(fontWeight: FontWeight.w600)),
-                        if (issue.note.isNotEmpty) Text(issue.note, style: Theme.of(context).textTheme.bodySmall),
+                        Text(
+                          '${issue.span} → ${issue.fix}',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        if (issue.note.isNotEmpty)
+                          Text(
+                            issue.note,
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
                       ],
                     ),
                   ),
               ],
               if (result.naturalAlternative.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                Text('Forma natural', style: Theme.of(context).textTheme.titleSmall),
+                Text(
+                  'Forma natural',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
                 const SizedBox(height: 4),
                 Text(result.naturalAlternative),
               ],

@@ -1,28 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../core/session/app_role.dart';
 import '../core/session/auth_controller.dart';
-import '../features/dictation/dictation_home_page.dart';
-import '../features/library/library_list_page.dart';
-import '../features/notebook/notebook_list_page.dart';
-import '../features/placement/placement_home_page.dart';
-import '../features/profile/subscriber_profile_page.dart';
-import '../features/study_coach/study_coach_home_page.dart';
-import '../features/subscription/subscription_status_page.dart';
-import '../features/vocabulary/vocabulary_list_page.dart';
+import '../features/home/subscriber_dashboard_page.dart';
+import '../features/notebook/notebook_fab.dart';
+import 'learner_routes.dart';
 
-/// Placeholder de navegação por role — vira o shell real (bottom nav /
-/// drawer com as features) conforme os itens 2+ do roadmap forem entrando.
+/// Home do aluno de escola — atalhos até o item 7 (atividades/aulas) existir.
 class _LearnerHomeScaffold extends ConsumerWidget {
-  const _LearnerHomeScaffold({required this.title, this.isSubscriber = false});
+  const _LearnerHomeScaffold({required this.title});
 
   final String title;
-  final bool isSubscriber;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authControllerProvider).value;
+    const role = AppRole.student;
     return Scaffold(
+      floatingActionButton: const NotebookFab(),
       appBar: AppBar(
         title: Text(title),
         actions: [
@@ -45,68 +42,32 @@ class _LearnerHomeScaffold extends ConsumerWidget {
             FilledButton.icon(
               icon: const Icon(Icons.style_outlined),
               label: const Text('Vocabulário'),
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const VocabularyListPage()),
-              ),
+              onPressed: () => context.push(LearnerPaths.vocabulary(role)),
             ),
             const SizedBox(height: 12),
             FilledButton.icon(
               icon: const Icon(Icons.edit_note),
               label: const Text('Caderno'),
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const NotebookListPage()),
-              ),
+              onPressed: () => context.push(LearnerPaths.notebook(role)),
             ),
             const SizedBox(height: 12),
             FilledButton.icon(
               icon: const Icon(Icons.menu_book_outlined),
               label: const Text('Biblioteca'),
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const LibraryListPage()),
-              ),
+              onPressed: () => context.push(LearnerPaths.library(role)),
             ),
             const SizedBox(height: 12),
             FilledButton.icon(
               icon: const Icon(Icons.headphones),
               label: const Text('Ditado'),
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const DictationHomePage()),
-              ),
+              onPressed: () => context.push(LearnerPaths.dictation(role)),
             ),
             const SizedBox(height: 12),
             FilledButton.icon(
               icon: const Icon(Icons.school_outlined),
               label: const Text('Nivelamento'),
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const PlacementHomePage()),
-              ),
+              onPressed: () => context.push(LearnerPaths.placement(role)),
             ),
-            if (isSubscriber) ...[
-              const SizedBox(height: 12),
-              FilledButton.icon(
-                icon: const Icon(Icons.auto_awesome),
-                label: const Text('Study Coach'),
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const StudyCoachHomePage()),
-                ),
-              ),
-              const SizedBox(height: 12),
-              FilledButton.icon(
-                icon: const Icon(Icons.person_outline),
-                label: const Text('Perfil'),
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const SubscriberProfilePage()),
-                ),
-              ),
-              const SizedBox(height: 12),
-              FilledButton.icon(
-                icon: const Icon(Icons.card_membership_outlined),
-                label: const Text('Assinatura'),
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const SubscriptionStatusPage()),
-                ),
-              ),
-            ],
           ],
         ),
       ),
@@ -118,12 +79,13 @@ class StudentHomePage extends StatelessWidget {
   const StudentHomePage({super.key});
 
   @override
-  Widget build(BuildContext context) => const _LearnerHomeScaffold(title: 'ConnectLang');
+  Widget build(BuildContext context) =>
+      const _LearnerHomeScaffold(title: 'ConnectLang');
 }
 
 class SubscriberHomePage extends StatelessWidget {
   const SubscriberHomePage({super.key});
 
   @override
-  Widget build(BuildContext context) => const _LearnerHomeScaffold(title: 'ConnectLang', isSubscriber: true);
+  Widget build(BuildContext context) => const SubscriberDashboardPage();
 }

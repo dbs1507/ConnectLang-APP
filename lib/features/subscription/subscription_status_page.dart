@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/session/auth_controller.dart';
+import '../notebook/notebook_fab.dart';
 import '../../core/session/subscription_info.dart';
 
 /// Espelha só a parte de leitura de `SubscriptionPage.tsx` — plano, status e
@@ -16,6 +17,7 @@ class SubscriptionStatusPage extends ConsumerWidget {
     final subscription = ref.watch(authControllerProvider).value?.subscription;
 
     return Scaffold(
+      floatingActionButton: const NotebookFab(),
       appBar: AppBar(title: const Text('Assinatura')),
       body: SafeArea(
         child: Padding(
@@ -82,7 +84,9 @@ class _SubscriptionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isTrialing = subscription.status == SubscriptionStatus.trialing;
-    final chargeDate = isTrialing ? subscription.trialEndsAt : subscription.nextDueDate;
+    final chargeDate = isTrialing
+        ? subscription.trialEndsAt
+        : subscription.nextDueDate;
     final chargeLabel = isTrialing ? 'Teste termina em' : 'Próxima cobrança';
 
     return Column(
@@ -94,17 +98,29 @@ class _SubscriptionCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(_planLabel(subscription.plan), style: Theme.of(context).textTheme.titleLarge),
+                Text(
+                  _planLabel(subscription.plan),
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
                 const SizedBox(height: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
-                    color: _statusColor(context, subscription.status).withValues(alpha: 0.12),
+                    color: _statusColor(
+                      context,
+                      subscription.status,
+                    ).withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
                     _statusLabel(subscription.status),
-                    style: TextStyle(color: _statusColor(context, subscription.status), fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      color: _statusColor(context, subscription.status),
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
                 if (chargeDate != null) ...[

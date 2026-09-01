@@ -7,7 +7,11 @@
 /// existe. Perguntas abertas (`question_type = 'open'`) nunca são geradas
 /// pela IA (só criadas manualmente pelo professor) e ficam de fora.
 class TextQuestionOption {
-  const TextQuestionOption({required this.key, required this.text, required this.isCorrect});
+  const TextQuestionOption({
+    required this.key,
+    required this.text,
+    required this.isCorrect,
+  });
 
   final String key;
   final String text;
@@ -41,7 +45,12 @@ class TextQuestion {
     if (row['question_type'] != 'mcq') return null;
     final rawOptions = row['text_question_options'];
     final options = rawOptions is List
-        ? (rawOptions.whereType<Map>().map((o) => TextQuestionOption.fromRow(Map<String, dynamic>.from(o))).toList()
+        ? (rawOptions
+              .whereType<Map>()
+              .map(
+                (o) => TextQuestionOption.fromRow(Map<String, dynamic>.from(o)),
+              )
+              .toList()
             ..sort((a, b) => a.key.compareTo(b.key)))
         : <TextQuestionOption>[];
     if (options.isEmpty) return null;
@@ -65,13 +74,27 @@ class TextQuestionSet {
     final rawQuestions = row['text_questions'];
     final questions = rawQuestions is List
         ? (rawQuestions
-                .whereType<Map>()
-                .map((q) => TextQuestion.fromRow(Map<String, dynamic>.from(q)))
-                .whereType<TextQuestion>()
-                .toList()
-              ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex)))
+              .whereType<Map>()
+              .map((q) => TextQuestion.fromRow(Map<String, dynamic>.from(q)))
+              .whereType<TextQuestion>()
+              .toList()
+            ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex)))
         : <TextQuestion>[];
     if (questions.isEmpty) return null;
     return TextQuestionSet(id: row['id'] as String, questions: questions);
   }
+}
+
+class StudentQuestionAttempt {
+  const StudentQuestionAttempt({
+    required this.id,
+    required this.correct,
+    required this.total,
+    this.submittedAt,
+  });
+
+  final String id;
+  final int correct;
+  final int total;
+  final DateTime? submittedAt;
 }

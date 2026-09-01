@@ -14,9 +14,9 @@ enum SrsRating {
   }
 
   String get label => switch (this) {
-        SrsRating.again => 'De novo',
-        SrsRating.hard => 'Difícil',
-        SrsRating.good => 'Bom',
-        SrsRating.easy => 'Fácil',
-      };
+    SrsRating.again => 'De novo',
+    SrsRating.hard => 'Difícil',
+    SrsRating.good => 'Bom',
+    SrsRating.easy => 'Fácil',
+  };
 }

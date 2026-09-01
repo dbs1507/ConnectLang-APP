@@ -7,13 +7,17 @@ import 'notebook_repository.dart';
 final notebookRepositoryProvider = Provider<NotebookRepository>((ref) {
   final userId = ref.watch(authControllerProvider).value?.id;
   if (userId == null) {
-    throw StateError('notebookRepositoryProvider lido sem usuário autenticado.');
+    throw StateError(
+      'notebookRepositoryProvider lido sem usuário autenticado.',
+    );
   }
   return NotebookRepository(userId);
 });
 
 final notebookControllerProvider =
-    AsyncNotifierProvider<NotebookController, List<NotebookEntry>>(NotebookController.new);
+    AsyncNotifierProvider<NotebookController, List<NotebookEntry>>(
+      NotebookController.new,
+    );
 
 class NotebookController extends AsyncNotifier<List<NotebookEntry>> {
   @override
@@ -56,12 +60,51 @@ class NotebookController extends AsyncNotifier<List<NotebookEntry>> {
       linkId: linkId,
       linkLabel: linkLabel,
     );
-    state = AsyncData([for (final e in state.value ?? []) if (e.id == entryId) updated else e]);
+    state = AsyncData([
+      for (final e in state.value ?? [])
+        if (e.id == entryId) updated else e,
+    ]);
   }
 
   Future<void> deleteEntry(String entryId) async {
     final repo = ref.read(notebookRepositoryProvider);
     await repo.delete(entryId);
-    state = AsyncData([for (final e in state.value ?? []) if (e.id != entryId) e]);
+    state = AsyncData([
+      for (final e in state.value ?? [])
+        if (e.id != entryId) e,
+    ]);
+  }
+
+  Future<void> addAiExplanation({
+    required String content,
+    required String language,
+    required String title,
+    required String aiSource,
+    NotebookLinkType? linkType,
+    String? linkId,
+    String? linkLabel,
+  }) async {
+    final entry = await ref
+        .read(notebookRepositoryProvider)
+        .createAiExplanation(
+          content: content,
+          language: language,
+          title: title,
+          aiSource: aiSource,
+          linkType: linkType,
+          linkId: linkId,
+          linkLabel: linkLabel,
+        );
+    state = AsyncData([entry, ...state.value ?? []]);
+  }
+
+  Future<void> markReviewed(String entryId, {required bool reviewed}) async {
+    final updated = await ref
+        .read(notebookRepositoryProvider)
+        .markReviewed(entryId, reviewed: reviewed);
+    state = AsyncData([
+      for (final e in state.value ?? [])
+        if (e.id == entryId) updated else e,
+    ]);
   }
 }

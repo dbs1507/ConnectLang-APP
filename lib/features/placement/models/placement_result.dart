@@ -2,7 +2,11 @@ import 'placement_item.dart';
 
 /// Espelha `PlacementDimensionScore` de `src/lib/placementTest.ts`.
 class PlacementDimensionScore {
-  const PlacementDimensionScore({required this.correct, required this.total, required this.ratio});
+  const PlacementDimensionScore({
+    required this.correct,
+    required this.total,
+    required this.ratio,
+  });
 
   final int correct;
   final int total;
@@ -57,7 +61,10 @@ class PlacementStepResult {
   final Map<String, PlacementDimensionScore> dimensionScores;
   final PlacementItem? item;
 
-  factory PlacementStepResult.fromRow(Map<String, dynamic> row, {required String fallbackLanguage}) {
+  factory PlacementStepResult.fromRow(
+    Map<String, dynamic> row, {
+    required String fallbackLanguage,
+  }) {
     final status = (row['status'] as String? ?? '').toLowerCase();
     final rawItem = row['item'];
     return PlacementStepResult(
@@ -70,7 +77,9 @@ class PlacementStepResult {
       currentCefr: row['currentCefr'] as String?,
       resultCefr: row['resultCefr'] as String?,
       dimensionScores: _dimensionScoresFromRow(row['dimensionScores']),
-      item: rawItem is Map ? PlacementItem.fromRow(Map<String, dynamic>.from(rawItem)) : null,
+      item: rawItem is Map
+          ? PlacementItem.fromRow(Map<String, dynamic>.from(rawItem))
+          : null,
     );
   }
 }

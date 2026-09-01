@@ -7,7 +7,9 @@ import 'placement_repository.dart';
 /// `auth.uid()` no servidor) — ver [PlacementRepository].
 final placementRepositoryProvider = Provider<PlacementRepository>((ref) {
   if (ref.watch(authControllerProvider).value?.id == null) {
-    throw StateError('placementRepositoryProvider lido sem usuário autenticado.');
+    throw StateError(
+      'placementRepositoryProvider lido sem usuário autenticado.',
+    );
   }
   return const PlacementRepository();
 });

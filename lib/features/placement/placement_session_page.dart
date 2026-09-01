@@ -19,7 +19,8 @@ const Map<String, String> _dimensionLabels = {
   'dictation': 'Ditado',
 };
 
-String _dimensionLabel(PlacementDimension dimension) => _dimensionLabels[dimension.name] ?? dimension.name;
+String _dimensionLabel(PlacementDimension dimension) =>
+    _dimensionLabels[dimension.name] ?? dimension.name;
 
 /// Uma pergunta já respondida, guardada só em memória do lado do cliente pra
 /// montar o gabarito ao final — espelha `PlacementReviewEntry` do web.
@@ -70,7 +71,8 @@ class PlacementSessionPage extends ConsumerStatefulWidget {
   final PlacementStepResult initial;
 
   @override
-  ConsumerState<PlacementSessionPage> createState() => _PlacementSessionPageState();
+  ConsumerState<PlacementSessionPage> createState() =>
+      _PlacementSessionPageState();
 }
 
 class _PlacementSessionPageState extends ConsumerState<PlacementSessionPage> {
@@ -128,8 +130,14 @@ class _PlacementSessionPageState extends ConsumerState<PlacementSessionPage> {
     try {
       var url = _audioUrlCache[_item.id];
       if (url == null) {
-        final text = (_item.audioText?.isNotEmpty == true ? _item.audioText : _item.prompt) ?? '';
-        url = await ref.read(placementRepositoryProvider).fetchAudioUrl(text: text, language: _item.language);
+        final text =
+            (_item.audioText?.isNotEmpty == true
+                ? _item.audioText
+                : _item.prompt) ??
+            '';
+        url = await ref
+            .read(placementRepositoryProvider)
+            .fetchAudioUrl(text: text, language: _item.language);
         if (url != null) _audioUrlCache[_item.id] = url;
       }
       if (url == null) {
@@ -142,7 +150,9 @@ class _PlacementSessionPageState extends ConsumerState<PlacementSessionPage> {
       // não podemos aguardar aqui ou o botão fica travado até o fim do áudio.
       unawaited(_player.play());
     } catch (_) {
-      if (mounted) setState(() => _audioError = 'Não foi possível tocar o áudio.');
+      if (mounted) {
+        setState(() => _audioError = 'Não foi possível tocar o áudio.');
+      }
     } finally {
       if (mounted) setState(() => _loadingAudio = false);
     }
@@ -155,22 +165,26 @@ class _PlacementSessionPageState extends ConsumerState<PlacementSessionPage> {
       _error = null;
     });
     try {
-      final result = await ref.read(placementRepositoryProvider).submitAnswer(
+      final result = await ref
+          .read(placementRepositoryProvider)
+          .submitAnswer(
             sessionId: _sessionId,
             itemId: _item.id,
             chosenOption: option,
             fallbackLanguage: _language,
           );
-      _reviewLog.add(_ReviewEntry(
-        index: _questionNumber,
-        dimension: _item.dimension,
-        cefr: _item.cefr,
-        prompt: _item.prompt,
-        options: _item.options,
-        chosenOption: option,
-        correctOption: result.correctOption,
-        correct: result.correct ?? false,
-      ));
+      _reviewLog.add(
+        _ReviewEntry(
+          index: _questionNumber,
+          dimension: _item.dimension,
+          cefr: _item.cefr,
+          prompt: _item.prompt,
+          options: _item.options,
+          chosenOption: option,
+          correctOption: result.correctOption,
+          correct: result.correct ?? false,
+        ),
+      );
       setState(() {
         _chosenOption = option;
         _lastCorrect = result.correct ?? false;
@@ -179,7 +193,11 @@ class _PlacementSessionPageState extends ConsumerState<PlacementSessionPage> {
         _currentCefr = result.currentCefr ?? result.resultCefr ?? _currentCefr;
       });
     } catch (_) {
-      if (mounted) setState(() => _error = 'Não foi possível enviar a resposta. Tente novamente.');
+      if (mounted) {
+        setState(
+          () => _error = 'Não foi possível enviar a resposta. Tente novamente.',
+        );
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -204,7 +222,11 @@ class _PlacementSessionPageState extends ConsumerState<PlacementSessionPage> {
       int? score;
 
       if (_item.isDictation) {
-        expected = (_item.audioText?.isNotEmpty == true ? _item.audioText! : _item.prompt).trim();
+        expected =
+            (_item.audioText?.isNotEmpty == true
+                    ? _item.audioText!
+                    : _item.prompt)
+                .trim();
         final local = scoreDictationAnswer(expected, text);
         score = local.score;
         productionCefr = dictationScoreToCefr(local.score, _item.cefr);
@@ -230,12 +252,18 @@ class _PlacementSessionPageState extends ConsumerState<PlacementSessionPage> {
         promptCefr: _item.cefr,
         dictationScore: score,
         answer: text,
-        sourcePt: _item.isDictation || _item.isFreeWriting ? null : _item.prompt,
+        sourcePt: _item.isDictation || _item.isFreeWriting
+            ? null
+            : _item.prompt,
       );
 
       final submitCefr = _item.isDictation
           ? productionCefr
-          : placementSoftPassCefr(productionCefr: productionCefr, itemCefr: _item.cefr, needsWork: needsWork);
+          : placementSoftPassCefr(
+              productionCefr: productionCefr,
+              itemCefr: _item.cefr,
+              needsWork: needsWork,
+            );
 
       final result = await repo.submitProduction(
         sessionId: _sessionId,
@@ -245,16 +273,18 @@ class _PlacementSessionPageState extends ConsumerState<PlacementSessionPage> {
         productionCefr: submitCefr,
       );
 
-      _reviewLog.add(_ReviewEntry(
-        index: _questionNumber,
-        dimension: _item.dimension,
-        cefr: _item.cefr,
-        prompt: _item.isDictation ? '' : _item.prompt,
-        answer: text,
-        modelText: expected.isNotEmpty ? expected : grade?.modelTranslation,
-        dictationScore: score,
-        needsWork: needsWork,
-      ));
+      _reviewLog.add(
+        _ReviewEntry(
+          index: _questionNumber,
+          dimension: _item.dimension,
+          cefr: _item.cefr,
+          prompt: _item.isDictation ? '' : _item.prompt,
+          answer: text,
+          modelText: expected.isNotEmpty ? expected : grade?.modelTranslation,
+          dictationScore: score,
+          needsWork: needsWork,
+        ),
+      );
 
       setState(() {
         _dictationScore = score;
@@ -267,7 +297,11 @@ class _PlacementSessionPageState extends ConsumerState<PlacementSessionPage> {
         _currentCefr = result.currentCefr ?? result.resultCefr ?? _currentCefr;
       });
     } catch (_) {
-      if (mounted) setState(() => _error = 'Não foi possível enviar a resposta. Tente novamente.');
+      if (mounted) {
+        setState(
+          () => _error = 'Não foi possível enviar a resposta. Tente novamente.',
+        );
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -305,10 +339,20 @@ class _PlacementSessionPageState extends ConsumerState<PlacementSessionPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (_resultPhase) return _ResultView(cefr: _resultCefr, dimensionScores: _resultDimensionScores, reviewLog: _reviewLog);
+    if (_resultPhase) {
+      return _ResultView(
+        cefr: _resultCefr,
+        dimensionScores: _resultDimensionScores,
+        reviewLog: _reviewLog,
+      );
+    }
 
     return Scaffold(
-      appBar: AppBar(title: Text('Pergunta $_questionNumber · ${_currentCefr ?? _item.cefr}')),
+      appBar: AppBar(
+        title: Text(
+          'Pergunta $_questionNumber · ${_currentCefr ?? _item.cefr}',
+        ),
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -317,28 +361,47 @@ class _PlacementSessionPageState extends ConsumerState<PlacementSessionPage> {
             children: [
               Chip(label: Text(_dimensionLabel(_item.dimension))),
               const SizedBox(height: 16),
-              Text(_item.prompt, style: Theme.of(context).textTheme.titleMedium),
+              Text(
+                _item.prompt,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
               if (_item.needsAudio) ...[
                 const SizedBox(height: 16),
                 Center(
                   child: FilledButton.icon(
                     onPressed: _loadingAudio ? null : _playAudio,
                     icon: _loadingAudio
-                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
                         : const Icon(Icons.play_arrow),
                     label: const Text('Ouvir áudio'),
                   ),
                 ),
                 if (_audioError != null) ...[
                   const SizedBox(height: 8),
-                  Text(_audioError!, style: TextStyle(color: Theme.of(context).colorScheme.error), textAlign: TextAlign.center),
+                  Text(
+                    _audioError!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
                 ],
               ],
               const SizedBox(height: 24),
-              if (_item.isFreeText) ..._buildFreeTextInput() else ..._buildMcqOptions(),
+              if (_item.isFreeText)
+                ..._buildFreeTextInput()
+              else
+                ..._buildMcqOptions(),
               if (_error != null) ...[
                 const SizedBox(height: 12),
-                Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                Text(
+                  _error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
               ],
               if (_showingFeedback) ...[
                 const SizedBox(height: 16),
@@ -359,12 +422,19 @@ class _PlacementSessionPageState extends ConsumerState<PlacementSessionPage> {
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: OutlinedButton(
-              onPressed: (_loading || _showingFeedback) ? null : () => _answerMcq(key),
+              onPressed: (_loading || _showingFeedback)
+                  ? null
+                  : () => _answerMcq(key),
               style: OutlinedButton.styleFrom(
                 alignment: Alignment.centerLeft,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
                 backgroundColor: _showingFeedback && key == _chosenOption
-                    ? (_lastCorrect == true ? Colors.green.withValues(alpha: 0.12) : Colors.red.withValues(alpha: 0.1))
+                    ? (_lastCorrect == true
+                          ? Colors.green.withValues(alpha: 0.12)
+                          : Colors.red.withValues(alpha: 0.1))
                     : null,
               ),
               child: Text('$key.  ${_item.options[key]}'),
@@ -385,8 +455,8 @@ class _PlacementSessionPageState extends ConsumerState<PlacementSessionPage> {
           labelText: _item.isDictation
               ? 'Digite o que você ouviu'
               : _item.isFreeWriting
-                  ? 'Escreva sua resposta'
-                  : 'Digite sua tradução',
+              ? 'Escreva sua resposta'
+              : 'Digite sua tradução',
         ),
       ),
       if (!_showingFeedback) ...[
@@ -394,7 +464,11 @@ class _PlacementSessionPageState extends ConsumerState<PlacementSessionPage> {
         FilledButton(
           onPressed: _loading ? null : _submitFreeText,
           child: _loading
-              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
               : Text(_item.isDictation ? 'Enviar ditado' : 'Enviar'),
         ),
       ],
@@ -402,9 +476,14 @@ class _PlacementSessionPageState extends ConsumerState<PlacementSessionPage> {
   }
 
   Widget _buildFeedbackCard(BuildContext context) {
-    final bool ok = _freeTextSubmitted ? !_freeTextNeedsWork : (_lastCorrect ?? false);
+    final bool ok = _freeTextSubmitted
+        ? !_freeTextNeedsWork
+        : (_lastCorrect ?? false);
     final color = ok ? Colors.green : Theme.of(context).colorScheme.error;
-    final showModel = _freeTextSubmitted && _freeTextNeedsWork && _productionGrade?.modelTranslation.isNotEmpty == true;
+    final showModel =
+        _freeTextSubmitted &&
+        _freeTextNeedsWork &&
+        _productionGrade?.modelTranslation.isNotEmpty == true;
 
     return Card(
       color: color.withValues(alpha: 0.08),
@@ -419,7 +498,9 @@ class _PlacementSessionPageState extends ConsumerState<PlacementSessionPage> {
                 const SizedBox(width: 8),
                 Text(
                   _freeTextSubmitted
-                      ? (ok ? 'Boa produção' : 'Resposta incompleta ou com erros')
+                      ? (ok
+                            ? 'Boa produção'
+                            : 'Resposta incompleta ou com erros')
                       : (ok ? 'Resposta correta' : 'Resposta incorreta'),
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
@@ -429,18 +510,36 @@ class _PlacementSessionPageState extends ConsumerState<PlacementSessionPage> {
             if (_dictationExpected != null) ...[
               Text('Pontuação do ditado: ${_dictationScore ?? 0}%'),
               const SizedBox(height: 4),
-              Text('Frase correta: $_dictationExpected', style: const TextStyle(fontWeight: FontWeight.w600)),
+              Text(
+                'Frase correta: $_dictationExpected',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
             ] else if (showModel) ...[
-              Text('Forma natural: ${_productionGrade!.modelTranslation}', style: const TextStyle(fontWeight: FontWeight.w600)),
+              Text(
+                'Forma natural: ${_productionGrade!.modelTranslation}',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
             ] else if (!_freeTextSubmitted) ...[
-              Text(ok ? 'Muito bem. Vamos um pouco mais longe.' : 'Ajustamos a dificuldade para a próxima pergunta.'),
+              Text(
+                ok
+                    ? 'Muito bem. Vamos um pouco mais longe.'
+                    : 'Ajustamos a dificuldade para a próxima pergunta.',
+              ),
             ] else ...[
-              Text(ok ? 'Sua resposta está sólida neste nível. Seguimos.' : 'Há erros ou trechos incompletos nesta resposta. Revise e siga para a próxima.'),
+              Text(
+                ok
+                    ? 'Sua resposta está sólida neste nível. Seguimos.'
+                    : 'Há erros ou trechos incompletos nesta resposta. Revise e siga para a próxima.',
+              ),
             ],
             const SizedBox(height: 16),
             FilledButton(
               onPressed: _continue,
-              child: Text(_pendingResult?.completed == true ? 'Ver meu nível' : 'Próxima pergunta'),
+              child: Text(
+                _pendingResult?.completed == true
+                    ? 'Ver meu nível'
+                    : 'Próxima pergunta',
+              ),
             ),
           ],
         ),
@@ -450,7 +549,11 @@ class _PlacementSessionPageState extends ConsumerState<PlacementSessionPage> {
 }
 
 class _ResultView extends StatelessWidget {
-  const _ResultView({required this.cefr, required this.dimensionScores, required this.reviewLog});
+  const _ResultView({
+    required this.cefr,
+    required this.dimensionScores,
+    required this.reviewLog,
+  });
 
   final String cefr;
   final Map<String, PlacementDimensionScore> dimensionScores;
@@ -458,24 +561,42 @@ class _ResultView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final productionTotal = (dimensionScores['production']?.total ?? 0) + (dimensionScores['dictation']?.total ?? 0);
+    final productionTotal =
+        (dimensionScores['production']?.total ?? 0) +
+        (dimensionScores['dictation']?.total ?? 0);
     return Scaffold(
       appBar: AppBar(title: const Text('Resultado')),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(24),
           children: [
-            Icon(Icons.emoji_events_outlined, size: 48, color: Theme.of(context).colorScheme.primary),
+            Icon(
+              Icons.emoji_events_outlined,
+              size: 48,
+              color: Theme.of(context).colorScheme.primary,
+            ),
             const SizedBox(height: 12),
-            Text('Seu nível: $cefr', style: Theme.of(context).textTheme.headlineSmall),
+            Text(
+              'Seu nível: $cefr',
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
             const SizedBox(height: 4),
-            const Text('Pronto pra estudar com conteúdos alinhados a esse nível.'),
+            const Text(
+              'Pronto pra estudar com conteúdos alinhados a esse nível.',
+            ),
             const SizedBox(height: 24),
             if (dimensionScores.isNotEmpty) ...[
-              Text('Desempenho por dimensão', style: Theme.of(context).textTheme.titleSmall),
+              Text(
+                'Desempenho por dimensão',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
               const SizedBox(height: 8),
               for (final dim in ['vocab', 'grammar', 'listening'])
-                if (dimensionScores[dim] != null) _DimensionBar(label: _dimensionLabels[dim]!, score: dimensionScores[dim]!),
+                if (dimensionScores[dim] != null)
+                  _DimensionBar(
+                    label: _dimensionLabels[dim]!,
+                    score: dimensionScores[dim]!,
+                  ),
               if (productionTotal > 0) ...[
                 const SizedBox(height: 8),
                 Text(
@@ -486,7 +607,10 @@ class _ResultView extends StatelessWidget {
               const SizedBox(height: 24),
             ],
             if (reviewLog.isNotEmpty) ...[
-              Text('Gabarito do teste', style: Theme.of(context).textTheme.titleSmall),
+              Text(
+                'Gabarito do teste',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
               const SizedBox(height: 8),
               for (final entry in reviewLog) _ReviewTile(entry: entry),
             ],
@@ -520,13 +644,19 @@ class _DimensionBar extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(label, style: const TextStyle(fontSize: 12)),
-              Text('${score.correct}/${score.total} ($pct%)', style: const TextStyle(fontSize: 12)),
+              Text(
+                '${score.correct}/${score.total} ($pct%)',
+                style: const TextStyle(fontSize: 12),
+              ),
             ],
           ),
           const SizedBox(height: 4),
           ClipRRect(
             borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(value: score.ratio.clamp(0, 1), minHeight: 6),
+            child: LinearProgressIndicator(
+              value: score.ratio.clamp(0, 1),
+              minHeight: 6,
+            ),
           ),
         ],
       ),
@@ -541,7 +671,9 @@ class _ReviewTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final okColor = entry.isOk ? Colors.green : Theme.of(context).colorScheme.error;
+    final okColor = entry.isOk
+        ? Colors.green
+        : Theme.of(context).colorScheme.error;
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       child: Padding(
@@ -558,12 +690,22 @@ class _ReviewTile extends StatelessWidget {
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ),
-                Text(entry.isOk ? 'Acertou' : 'Errou', style: TextStyle(color: okColor, fontWeight: FontWeight.bold, fontSize: 12)),
+                Text(
+                  entry.isOk ? 'Acertou' : 'Errou',
+                  style: TextStyle(
+                    color: okColor,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
               ],
             ),
             if (entry.prompt.isNotEmpty) ...[
               const SizedBox(height: 6),
-              Text(entry.prompt, style: const TextStyle(fontWeight: FontWeight.w500)),
+              Text(
+                entry.prompt,
+                style: const TextStyle(fontWeight: FontWeight.w500),
+              ),
             ],
             const SizedBox(height: 8),
             if (entry.isMcq)
@@ -578,20 +720,26 @@ class _ReviewTile extends StatelessWidget {
                         color: key == entry.correctOption
                             ? Colors.green
                             : key == entry.chosenOption
-                                ? Theme.of(context).colorScheme.error
-                                : null,
+                            ? Theme.of(context).colorScheme.error
+                            : null,
                       ),
                     ),
                   )
-            else ...[
-              Text('Sua resposta: ${entry.answer}'),
-              if (entry.dictationScore != null) Text('Pontuação: ${entry.dictationScore}%', style: Theme.of(context).textTheme.bodySmall),
-              if (entry.modelText != null)
-                Text(
-                  entry.dictationScore != null ? 'Frase correta: ${entry.modelText}' : 'Forma natural: ${entry.modelText}',
-                  style: const TextStyle(fontWeight: FontWeight.w500),
-                ),
-            ],
+                else ...[
+                  Text('Sua resposta: ${entry.answer}'),
+                  if (entry.dictationScore != null)
+                    Text(
+                      'Pontuação: ${entry.dictationScore}%',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  if (entry.modelText != null)
+                    Text(
+                      entry.dictationScore != null
+                          ? 'Frase correta: ${entry.modelText}'
+                          : 'Forma natural: ${entry.modelText}',
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                ],
           ],
         ),
       ),

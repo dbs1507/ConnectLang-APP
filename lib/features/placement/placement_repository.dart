@@ -22,7 +22,10 @@ class PlacementRepository {
   }
 
   Future<bool> isLanguageReady(String language) async {
-    final data = await supabase.rpc('placement_language_ready', params: {'p_language': language});
+    final data = await supabase.rpc(
+      'placement_language_ready',
+      params: {'p_language': language},
+    );
     return data == true;
   }
 
@@ -30,11 +33,20 @@ class PlacementRepository {
   /// janela de graça de 72h) ou `placement_can_retake_student` (aluno de
   /// escola, liberado só por concessão do professor) — a mesma escolha de
   /// RPC que o web faz por `isStudentRole`.
-  Future<PlacementRetakeStatus> fetchCanRetake({required String language, required bool isStudent}) async {
+  Future<PlacementRetakeStatus> fetchCanRetake({
+    required String language,
+    required bool isStudent,
+  }) async {
     try {
       final data = isStudent
-          ? await supabase.rpc('placement_can_retake_student', params: {'p_language': language, 'p_user_id': null})
-          : await supabase.rpc('placement_can_retake', params: {'p_language': language, 'p_suggestion_id': null});
+          ? await supabase.rpc(
+              'placement_can_retake_student',
+              params: {'p_language': language, 'p_user_id': null},
+            )
+          : await supabase.rpc(
+              'placement_can_retake',
+              params: {'p_language': language, 'p_suggestion_id': null},
+            );
       return PlacementRetakeStatus.fromRow(_asRow(data));
     } catch (_) {
       return PlacementRetakeStatus.allowedFallback;
@@ -42,14 +54,26 @@ class PlacementRepository {
   }
 
   Future<PlacementStepResult> startTest(String language) async {
-    final data = await supabase.rpc('placement_start_test', params: {'p_language': language});
-    return PlacementStepResult.fromRow(_asRow(data), fallbackLanguage: language);
+    final data = await supabase.rpc(
+      'placement_start_test',
+      params: {'p_language': language},
+    );
+    return PlacementStepResult.fromRow(
+      _asRow(data),
+      fallbackLanguage: language,
+    );
   }
 
   /// "Começar do zero": pula o teste e define o nível como A1 direto.
   Future<PlacementStepResult> startZero(String language) async {
-    final data = await supabase.rpc('placement_start_zero', params: {'p_language': language});
-    return PlacementStepResult.fromRow(_asRow(data), fallbackLanguage: language);
+    final data = await supabase.rpc(
+      'placement_start_zero',
+      params: {'p_language': language},
+    );
+    return PlacementStepResult.fromRow(
+      _asRow(data),
+      fallbackLanguage: language,
+    );
   }
 
   Future<PlacementStepResult> submitAnswer({
@@ -58,12 +82,18 @@ class PlacementRepository {
     required String chosenOption,
     required String fallbackLanguage,
   }) async {
-    final data = await supabase.rpc('placement_submit_answer', params: {
-      'p_session_id': sessionId,
-      'p_item_id': itemId,
-      'p_chosen_option': chosenOption,
-    });
-    return PlacementStepResult.fromRow(_asRow(data), fallbackLanguage: fallbackLanguage);
+    final data = await supabase.rpc(
+      'placement_submit_answer',
+      params: {
+        'p_session_id': sessionId,
+        'p_item_id': itemId,
+        'p_chosen_option': chosenOption,
+      },
+    );
+    return PlacementStepResult.fromRow(
+      _asRow(data),
+      fallbackLanguage: fallbackLanguage,
+    );
   }
 
   Future<PlacementStepResult> submitProduction({
@@ -73,13 +103,19 @@ class PlacementRepository {
     required String fallbackLanguage,
     String? productionCefr,
   }) async {
-    final data = await supabase.rpc('placement_submit_production', params: {
-      'p_session_id': sessionId,
-      'p_item_id': itemId,
-      'p_free_text': freeText,
-      'p_production_cefr': productionCefr,
-    });
-    return PlacementStepResult.fromRow(_asRow(data), fallbackLanguage: fallbackLanguage);
+    final data = await supabase.rpc(
+      'placement_submit_production',
+      params: {
+        'p_session_id': sessionId,
+        'p_item_id': itemId,
+        'p_free_text': freeText,
+        'p_production_cefr': productionCefr,
+      },
+    );
+    return PlacementStepResult.fromRow(
+      _asRow(data),
+      fallbackLanguage: fallbackLanguage,
+    );
   }
 
   /// Juiz LLM (edge function `placement-grade-production`) pra tradução/produção
@@ -110,7 +146,10 @@ class PlacementRepository {
 
   /// Mesma edge function `tts-generate` usada pelo Ditado — listening e
   /// ditado do nivelamento tocam áudio gerado sob demanda.
-  Future<String?> fetchAudioUrl({required String text, required String language}) async {
+  Future<String?> fetchAudioUrl({
+    required String text,
+    required String language,
+  }) async {
     final response = await supabase.functions.invoke(
       'tts-generate',
       body: {
@@ -122,7 +161,9 @@ class PlacementRepository {
       },
     );
     final data = response.data;
-    if (data is Map && data['audioUrl'] is String) return data['audioUrl'] as String;
+    if (data is Map && data['audioUrl'] is String) {
+      return data['audioUrl'] as String;
+    }
     return null;
   }
 }
@@ -147,7 +188,9 @@ class PlacementProductionGrade {
     final valid = cefr != null && placementCefrLadder.contains(cefr);
     return PlacementProductionGrade(
       productionCefr: valid ? cefr : null,
-      tags: (row['tags'] as List?)?.map((e) => e.toString()).take(2).toList() ?? const [],
+      tags:
+          (row['tags'] as List?)?.map((e) => e.toString()).take(2).toList() ??
+          const [],
       rationale: (row['rationale'] as String? ?? '').trim(),
       modelTranslation: (row['modelTranslation'] as String? ?? '').trim(),
       showModel: row['showModel'] == true,

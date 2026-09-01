@@ -7,7 +7,9 @@ import 'study_coach_repository.dart';
 /// (`auth.uid()`) e a edge function autentica pelo token da sessão atual.
 final studyCoachRepositoryProvider = Provider<StudyCoachRepository>((ref) {
   if (ref.watch(authControllerProvider).value?.id == null) {
-    throw StateError('studyCoachRepositoryProvider lido sem usuário autenticado.');
+    throw StateError(
+      'studyCoachRepositoryProvider lido sem usuário autenticado.',
+    );
   }
   return const StudyCoachRepository();
 });

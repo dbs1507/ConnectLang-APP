@@ -26,7 +26,9 @@ const Map<SrsRating, int> srsRatingDifficultyDelta = {
 };
 
 int clampSrsDifficulty(num? value) {
-  if (value == null || value.isNaN || value.isInfinite) return srsDifficultyInitial;
+  if (value == null || value.isNaN || value.isInfinite) {
+    return srsDifficultyInitial;
+  }
   return value.round().clamp(srsDifficultyMin, srsDifficultyMax);
 }
 
@@ -39,7 +41,10 @@ int inferSrsDifficultyFromInterval(int? intervalMinutes) {
 }
 
 class SrsSchedule {
-  const SrsSchedule({required this.nextIntervalMinutes, required this.nextDifficulty});
+  const SrsSchedule({
+    required this.nextIntervalMinutes,
+    required this.nextDifficulty,
+  });
 
   final int nextIntervalMinutes;
   final int nextDifficulty;
@@ -51,14 +56,21 @@ SrsSchedule getAdaptiveSrsSchedule({
   int? previousIntervalMinutes,
 }) {
   final difficulty = clampSrsDifficulty(
-    currentDifficulty ?? inferSrsDifficultyFromInterval(previousIntervalMinutes),
+    currentDifficulty ??
+        inferSrsDifficultyFromInterval(previousIntervalMinutes),
   );
   final baseDays = srsRatingBaseDays[rating]!;
   final nextInterval = baseDays <= 0
       ? 0
-      : (math.min(srsMaxIntervalDays, math.pow(baseDays, difficulty)) * 1440).round();
-  final nextDifficulty = clampSrsDifficulty(difficulty + srsRatingDifficultyDelta[rating]!);
-  return SrsSchedule(nextIntervalMinutes: nextInterval, nextDifficulty: nextDifficulty);
+      : (math.min(srsMaxIntervalDays, math.pow(baseDays, difficulty)) * 1440)
+            .round();
+  final nextDifficulty = clampSrsDifficulty(
+    difficulty + srsRatingDifficultyDelta[rating]!,
+  );
+  return SrsSchedule(
+    nextIntervalMinutes: nextInterval,
+    nextDifficulty: nextDifficulty,
+  );
 }
 
 /// Rótulo do tempo até a palavra voltar (intervalo total, não o incremento).

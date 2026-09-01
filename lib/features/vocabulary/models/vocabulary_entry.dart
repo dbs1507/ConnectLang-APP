@@ -14,10 +14,24 @@ const Map<String, String> taughtLanguages = {
   'SV': 'Sueco',
 };
 
-/// Recorte de `MineVocabEntry` (web) usado nesta primeira fatia de
-/// Vocabulário: só palavras adicionadas manualmente pelo próprio
-/// aluno/assinante (`source = 'student'`). Categorias, vocabulário base,
-/// palavras do professor e enrich por IA ficam para as próximas fatias.
+enum VocabEntryKind {
+  word,
+  sentence;
+
+  static VocabEntryKind fromRaw(String? raw) {
+    return raw == 'sentence' || raw == 'expression' ? sentence : word;
+  }
+
+  String get raw => this == sentence ? 'sentence' : 'word';
+
+  static VocabEntryKind infer(String term) {
+    return term.trim().split(RegExp(r'\s+')).length >= 2 ? sentence : word;
+  }
+}
+
+/// Recorte de `MineVocabEntry` (web): palavras do próprio aluno/assinante
+/// (`source = 'student'`), incluindo as copiadas da base
+/// (`saved_from_base_vocab_id`). Palavras do professor ficam fora.
 class VocabularyEntry {
   const VocabularyEntry({
     required this.id,
@@ -33,6 +47,9 @@ class VocabularyEntry {
     this.example,
     this.partOfSpeech,
     this.lastRating,
+    this.categoryIds = const [],
+    this.savedFromBaseVocabId,
+    this.entryKind = VocabEntryKind.word,
   });
 
   final String id;
@@ -48,10 +65,16 @@ class VocabularyEntry {
   final int intervalMinutes;
   final SrsRating? lastRating;
   final int srsDifficulty;
+  final List<String> categoryIds;
+  final String? savedFromBaseVocabId;
+  final VocabEntryKind entryKind;
 
   bool get isDue => !nextReview.isAfter(DateTime.now());
 
-  factory VocabularyEntry.fromRow(Map<String, dynamic> row) {
+  factory VocabularyEntry.fromRow(
+    Map<String, dynamic> row, {
+    List<String> categoryIds = const [],
+  }) {
     final intervalMinutes = row['interval_minutes'] as int? ?? 0;
     return VocabularyEntry(
       id: row['id'] as String,
@@ -63,13 +86,18 @@ class VocabularyEntry {
       partOfSpeech: row['part_of_speech'] as String?,
       language: row['language'] as String,
       createdAt: DateTime.parse(row['created_at'] as String),
-      nextReview: DateTime.tryParse(row['next_review_at'] as String? ?? '') ??
+      nextReview:
+          DateTime.tryParse(row['next_review_at'] as String? ?? '') ??
           DateTime.parse(row['created_at'] as String),
       intervalMinutes: intervalMinutes,
       lastRating: SrsRating.fromRaw(row['last_rating'] as String?),
       srsDifficulty: clampSrsDifficulty(
-        row['srs_difficulty'] as int? ?? inferSrsDifficultyFromInterval(intervalMinutes),
+        row['srs_difficulty'] as int? ??
+            inferSrsDifficultyFromInterval(intervalMinutes),
       ),
+      categoryIds: categoryIds,
+      savedFromBaseVocabId: row['saved_from_base_vocab_id'] as String?,
+      entryKind: VocabEntryKind.fromRaw(row['entry_kind'] as String?),
     );
   }
 
@@ -93,6 +121,9 @@ class VocabularyEntry {
       intervalMinutes: nextIntervalMinutes,
       lastRating: rating,
       srsDifficulty: nextDifficulty,
+      categoryIds: categoryIds,
+      savedFromBaseVocabId: savedFromBaseVocabId,
+      entryKind: entryKind,
     );
   }
 }

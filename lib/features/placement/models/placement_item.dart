@@ -32,8 +32,12 @@ PlacementItemKind _itemKindFromRaw(String? raw, PlacementDimension dimension) {
     case 'mcq':
       return PlacementItemKind.mcq;
     default:
-      if (dimension == PlacementDimension.dictation) return PlacementItemKind.ditado;
-      if (dimension == PlacementDimension.production) return PlacementItemKind.producaoTraducao;
+      if (dimension == PlacementDimension.dictation) {
+        return PlacementItemKind.ditado;
+      }
+      if (dimension == PlacementDimension.production) {
+        return PlacementItemKind.producaoTraducao;
+      }
       return PlacementItemKind.mcq;
   }
 }
@@ -64,7 +68,9 @@ class PlacementItem {
   /// Item de resposta livre (tradução, ditado ou produção livre) — sem opções A/B/C/D.
   bool get isFreeText => itemKind != PlacementItemKind.mcq;
 
-  bool get isDictation => itemKind == PlacementItemKind.ditado || dimension == PlacementDimension.dictation;
+  bool get isDictation =>
+      itemKind == PlacementItemKind.ditado ||
+      dimension == PlacementDimension.dictation;
 
   bool get isProduction =>
       itemKind == PlacementItemKind.producaoTraducao ||
@@ -75,13 +81,16 @@ class PlacementItem {
   bool get isFreeWriting => itemKind == PlacementItemKind.producaoLivre;
 
   /// Listening e ditado tocam áudio gerado sob demanda (mesma function do Ditado).
-  bool get needsAudio => dimension == PlacementDimension.listening || isDictation;
+  bool get needsAudio =>
+      dimension == PlacementDimension.listening || isDictation;
 
   factory PlacementItem.fromRow(Map<String, dynamic> row) {
     final dimension = _dimensionFromRaw(row['dimension'] as String?);
     final rawOptions = row['options'];
     final options = rawOptions is Map
-        ? rawOptions.map((key, value) => MapEntry(key.toString(), value?.toString() ?? ''))
+        ? rawOptions.map(
+            (key, value) => MapEntry(key.toString(), value?.toString() ?? ''),
+          )
         : <String, String>{};
     return PlacementItem(
       id: row['id'] as String,

@@ -5,15 +5,19 @@ import 'models/srs_rating.dart';
 import 'models/srs_schedule.dart';
 import 'models/vocabulary_entry.dart';
 import 'vocabulary_controller.dart';
+import 'vocab_tts_button.dart';
 
 /// Sessão de flashcards: mesma regra do web (`FlashcardMode` em
 /// `VocabularyPage.tsx`) — se há palavras vencidas (`isDue`), pratica só
 /// elas; senão, pratica a lista toda.
 class FlashcardPracticePage extends ConsumerStatefulWidget {
-  const FlashcardPracticePage({super.key});
+  const FlashcardPracticePage({super.key, this.kindFilter});
+
+  final VocabEntryKind? kindFilter;
 
   @override
-  ConsumerState<FlashcardPracticePage> createState() => _FlashcardPracticePageState();
+  ConsumerState<FlashcardPracticePage> createState() =>
+      _FlashcardPracticePageState();
 }
 
 class _FlashcardPracticePageState extends ConsumerState<FlashcardPracticePage> {
@@ -25,7 +29,11 @@ class _FlashcardPracticePageState extends ConsumerState<FlashcardPracticePage> {
   @override
   void initState() {
     super.initState();
-    final all = ref.read(vocabularyControllerProvider).value ?? [];
+    final all = (ref.read(vocabularyControllerProvider).value ?? [])
+        .where(
+          (e) => widget.kindFilter == null || e.entryKind == widget.kindFilter,
+        )
+        .toList();
     final due = all.where((e) => e.isDue).toList();
     _deck = due.isNotEmpty ? due : all;
   }
@@ -37,7 +45,9 @@ class _FlashcardPracticePageState extends ConsumerState<FlashcardPracticePage> {
       _index++;
       _showAnswer = false;
     });
-    await ref.read(vocabularyControllerProvider.notifier).rate(entry.id, rating);
+    await ref
+        .read(vocabularyControllerProvider.notifier)
+        .rate(entry.id, rating);
   }
 
   @override
@@ -58,9 +68,16 @@ class _FlashcardPracticePageState extends ConsumerState<FlashcardPracticePage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.check_circle, size: 48, color: Theme.of(context).colorScheme.primary),
+                Icon(
+                  Icons.check_circle,
+                  size: 48,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
                 const SizedBox(height: 16),
-                Text('Sessão concluída! Você revisou $_ratedCount palavra(s).', textAlign: TextAlign.center),
+                Text(
+                  'Sessão concluída! Você revisou $_ratedCount palavra(s).',
+                  textAlign: TextAlign.center,
+                ),
                 const SizedBox(height: 24),
                 FilledButton(
                   onPressed: () => Navigator.of(context).pop(),
@@ -76,9 +93,7 @@ class _FlashcardPracticePageState extends ConsumerState<FlashcardPracticePage> {
     final entry = _deck[_index];
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text('${_index + 1} / ${_deck.length}'),
-      ),
+      appBar: AppBar(title: Text('${_index + 1} / ${_deck.length}')),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -98,21 +113,47 @@ class _FlashcardPracticePageState extends ConsumerState<FlashcardPracticePage> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                taughtLanguages[entry.language] ?? entry.language,
+                                taughtLanguages[entry.language] ??
+                                    entry.language,
                                 style: Theme.of(context).textTheme.labelMedium,
                               ),
                               const SizedBox(height: 12),
-                              Text(entry.term, style: Theme.of(context).textTheme.headlineMedium, textAlign: TextAlign.center),
+                              Text(
+                                entry.term,
+                                style: Theme.of(
+                                  context,
+                                ).textTheme.headlineMedium,
+                                textAlign: TextAlign.center,
+                              ),
+                              VocabTtsButton(
+                                text: entry.term,
+                                language: entry.language,
+                              ),
                               if (!_showAnswer) ...[
                                 const SizedBox(height: 24),
-                                const Text('Toque pra ver a resposta', style: TextStyle(color: Colors.grey)),
+                                const Text(
+                                  'Toque pra ver a resposta',
+                                  style: TextStyle(color: Colors.grey),
+                                ),
                               ],
                               if (_showAnswer) ...[
                                 const Divider(height: 40),
-                                Text(entry.translation, style: Theme.of(context).textTheme.titleLarge, textAlign: TextAlign.center),
-                                if ((entry.context ?? '').trim().isNotEmpty) ...[
+                                Text(
+                                  entry.translation,
+                                  style: Theme.of(context).textTheme.titleLarge,
+                                  textAlign: TextAlign.center,
+                                ),
+                                if ((entry.context ?? '')
+                                    .trim()
+                                    .isNotEmpty) ...[
                                   const SizedBox(height: 12),
-                                  Text(entry.context!.trim(), textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyMedium),
+                                  Text(
+                                    entry.context!.trim(),
+                                    textAlign: TextAlign.center,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodyMedium,
+                                  ),
                                 ],
                               ],
                             ],
@@ -149,17 +190,26 @@ class _RatingButtons extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 4),
               child: OutlinedButton(
                 style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 12,
+                    horizontal: 4,
+                  ),
                 ),
                 onPressed: () => onRate(rating),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(rating.label, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Text(
+                      rating.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     Text(
                       formatSrsIntervalLabel(
-                        getAdaptiveSrsSchedule(rating: rating, currentDifficulty: entry.srsDifficulty)
-                            .nextIntervalMinutes,
+                        getAdaptiveSrsSchedule(
+                          rating: rating,
+                          currentDifficulty: entry.srsDifficulty,
+                        ).nextIntervalMinutes,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,

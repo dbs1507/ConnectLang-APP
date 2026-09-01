@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../app/learner_routes.dart';
 import '../../core/session/auth_controller.dart';
-import 'forgot_password_page.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
@@ -34,10 +35,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       _error = null;
     });
     try {
-      await ref.read(authControllerProvider.notifier).login(
-            _emailController.text.trim(),
-            _passwordController.text,
-          );
+      await ref
+          .read(authControllerProvider.notifier)
+          .login(_emailController.text.trim(), _passwordController.text);
     } on AuthException catch (e) {
       setState(() => _error = e.message);
     } catch (_) {
@@ -62,7 +62,11 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Icon(Icons.school, size: 48, color: Theme.of(context).colorScheme.primary),
+                    Icon(
+                      Icons.school,
+                      size: 48,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
                     const SizedBox(height: 12),
                     Text(
                       'ConnectLang',
@@ -76,7 +80,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       autofillHints: const [AutofillHints.email],
                       decoration: const InputDecoration(labelText: 'E-mail'),
                       validator: (value) =>
-                          (value == null || value.trim().isEmpty) ? 'Informe seu e-mail.' : null,
+                          (value == null || value.trim().isEmpty)
+                          ? 'Informe seu e-mail.'
+                          : null,
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
@@ -86,12 +92,19 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       decoration: InputDecoration(
                         labelText: 'Senha',
                         suffixIcon: IconButton(
-                          icon: Icon(_obscurePassword ? Icons.visibility : Icons.visibility_off),
-                          onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                          icon: Icon(
+                            _obscurePassword
+                                ? Icons.visibility
+                                : Icons.visibility_off,
+                          ),
+                          onPressed: () => setState(
+                            () => _obscurePassword = !_obscurePassword,
+                          ),
                         ),
                       ),
-                      validator: (value) =>
-                          (value == null || value.isEmpty) ? 'Informe sua senha.' : null,
+                      validator: (value) => (value == null || value.isEmpty)
+                          ? 'Informe sua senha.'
+                          : null,
                       onFieldSubmitted: (_) => _submit(),
                     ),
                     Align(
@@ -99,15 +112,18 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       child: TextButton(
                         onPressed: _submitting
                             ? null
-                            : () => Navigator.of(context).push(
-                                  MaterialPageRoute(builder: (_) => const ForgotPasswordPage()),
-                                ),
+                            : () => context.push(LearnerPaths.forgotPassword),
                         child: const Text('Esqueci minha senha'),
                       ),
                     ),
                     if (_error != null) ...[
                       const SizedBox(height: 8),
-                      Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                      Text(
+                        _error!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
                     ],
                     const SizedBox(height: 16),
                     FilledButton(

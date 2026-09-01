@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/session/app_role.dart';
+import '../notebook/notebook_fab.dart';
 import '../../core/session/auth_controller.dart';
 import '../vocabulary/models/vocabulary_entry.dart';
 import 'models/placement_result.dart';
@@ -16,14 +17,16 @@ import 'placement_session_page.dart';
 /// de cooldown de retake do web. Fora do escopo: pedido de retake pro
 /// professor e o atalho pra sugestão do Coach.
 class PlacementHomePage extends ConsumerStatefulWidget {
-  const PlacementHomePage({super.key});
+  const PlacementHomePage({super.key, this.initialLanguage});
+
+  final String? initialLanguage;
 
   @override
   ConsumerState<PlacementHomePage> createState() => _PlacementHomePageState();
 }
 
 class _PlacementHomePageState extends ConsumerState<PlacementHomePage> {
-  String _language = 'EN';
+  late String _language = widget.initialLanguage ?? 'EN';
   bool _loading = false;
   bool _checkingRetake = true;
   String? _error;
@@ -35,7 +38,8 @@ class _PlacementHomePageState extends ConsumerState<PlacementHomePage> {
     _refreshRetakeStatus();
   }
 
-  bool get _isStudent => ref.read(authControllerProvider).value?.role == AppRole.student;
+  bool get _isStudent =>
+      ref.read(authControllerProvider).value?.role == AppRole.student;
 
   Future<void> _refreshRetakeStatus() async {
     setState(() => _checkingRetake = true);
@@ -68,17 +72,26 @@ class _PlacementHomePageState extends ConsumerState<PlacementHomePage> {
       final repo = ref.read(placementRepositoryProvider);
       final ready = await repo.isLanguageReady(_language);
       if (!ready) {
-        setState(() => _error = 'O teste deste idioma ainda está em preparação.');
+        setState(
+          () => _error = 'O teste deste idioma ainda está em preparação.',
+        );
         return;
       }
       final PlacementStepResult result = await repo.startTest(_language);
       if (!mounted) return;
       await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => PlacementSessionPage(initial: result)),
+        MaterialPageRoute(
+          builder: (_) => PlacementSessionPage(initial: result),
+        ),
       );
       if (mounted) unawaited(_refreshRetakeStatus());
     } catch (_) {
-      if (mounted) setState(() => _error = 'Não foi possível iniciar o nivelamento. Tente novamente.');
+      if (mounted) {
+        setState(
+          () => _error =
+              'Não foi possível iniciar o nivelamento. Tente novamente.',
+        );
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -91,14 +104,22 @@ class _PlacementHomePageState extends ConsumerState<PlacementHomePage> {
       _error = null;
     });
     try {
-      final result = await ref.read(placementRepositoryProvider).startZero(_language);
+      final result = await ref
+          .read(placementRepositoryProvider)
+          .startZero(_language);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Nível definido como ${result.resultCefr ?? 'A1'}!')),
+        SnackBar(
+          content: Text('Nível definido como ${result.resultCefr ?? 'A1'}!'),
+        ),
       );
       unawaited(_refreshRetakeStatus());
     } catch (_) {
-      if (mounted) setState(() => _error = 'Não foi possível começar do zero. Tente novamente.');
+      if (mounted) {
+        setState(
+          () => _error = 'Não foi possível começar do zero. Tente novamente.',
+        );
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -110,6 +131,7 @@ class _PlacementHomePageState extends ConsumerState<PlacementHomePage> {
     final busy = _loading || _checkingRetake;
 
     return Scaffold(
+      floatingActionButton: const NotebookFab(),
       appBar: AppBar(title: const Text('Nivelamento')),
       body: Center(
         child: Padding(
@@ -118,7 +140,11 @@ class _PlacementHomePageState extends ConsumerState<PlacementHomePage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Icon(Icons.school_outlined, size: 48, color: Theme.of(context).colorScheme.primary),
+              Icon(
+                Icons.school_outlined,
+                size: 48,
+                color: Theme.of(context).colorScheme.primary,
+              ),
               const SizedBox(height: 16),
               const Text(
                 'Teste adaptativo de vocabulário, gramática e compreensão oral pra descobrir seu nível (CEFR) neste idioma.',
@@ -126,11 +152,15 @@ class _PlacementHomePageState extends ConsumerState<PlacementHomePage> {
               ),
               const SizedBox(height: 24),
               DropdownButtonFormField<String>(
+                key: ValueKey(_language),
                 initialValue: _language,
                 decoration: const InputDecoration(labelText: 'Idioma'),
                 items: [
                   for (final entry in taughtLanguages.entries)
-                    DropdownMenuItem(value: entry.key, child: Text(entry.value)),
+                    DropdownMenuItem(
+                      value: entry.key,
+                      child: Text(entry.value),
+                    ),
                 ],
                 onChanged: _loading ? null : _changeLanguage,
               ),
@@ -144,13 +174,21 @@ class _PlacementHomePageState extends ConsumerState<PlacementHomePage> {
               ],
               if (_error != null) ...[
                 const SizedBox(height: 12),
-                Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error), textAlign: TextAlign.center),
+                Text(
+                  _error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                  textAlign: TextAlign.center,
+                ),
               ],
               const SizedBox(height: 16),
               FilledButton(
                 onPressed: (busy || blocked) ? null : _start,
                 child: (_loading || _checkingRetake)
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                     : const Text('Descobrir meu nível'),
               ),
               const SizedBox(height: 12),

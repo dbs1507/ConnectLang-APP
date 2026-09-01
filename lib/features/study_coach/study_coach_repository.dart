@@ -24,7 +24,8 @@ class StudyCoachRepository {
       final payload = row['payload'];
       if (payload is! Map) continue;
       final payloadMap = Map<String, dynamic>.from(payload);
-      final planLanguage = (payloadMap['studyLanguage'] as String?)?.toUpperCase();
+      final planLanguage = (payloadMap['studyLanguage'] as String?)
+          ?.toUpperCase();
       if (planLanguage != null && planLanguage != studyLanguage) continue;
       final plan = StudyCoachPlan.fromRow(payloadMap);
       if (plan != null) return plan;
@@ -47,8 +48,54 @@ class StudyCoachRepository {
       throw StateError('Resposta inválida do plano de estudos.');
     }
     final plan = StudyCoachPlan.fromRow(Map<String, dynamic>.from(data));
-    if (plan == null) throw StateError('Não foi possível gerar o plano de estudos.');
+    if (plan == null) {
+      throw StateError('Não foi possível gerar o plano de estudos.');
+    }
     return plan;
+  }
+
+  Future<List<StudyCoachPlan>> fetchPlanHistory(String studyLanguage) async {
+    final rows = await supabase
+        .from('subscriber_daily_study_plans')
+        .select('payload, created_at, refreshed_at, plan_date')
+        .order('refreshed_at', ascending: false)
+        .order('created_at', ascending: false)
+        .limit(50);
+    final plans = <StudyCoachPlan>[];
+    for (final row in (rows as List).cast<Map<String, dynamic>>()) {
+      final payload = row['payload'];
+      if (payload is! Map) continue;
+      final payloadMap = Map<String, dynamic>.from(payload);
+      final plan = StudyCoachPlan.fromRow(payloadMap);
+      if (plan != null) plans.add(plan);
+      final archive = payloadMap['historyArchive'];
+      if (archive is List) {
+        for (final item in archive) {
+          if (item is! Map) continue;
+          final archived = StudyCoachPlan.fromRow(
+            Map<String, dynamic>.from(item),
+          );
+          if (archived != null) plans.add(archived);
+        }
+      }
+    }
+    final seen = <String>{};
+    final filtered = <StudyCoachPlan>[];
+    for (final plan in plans) {
+      if (plan.studyLanguage != null && plan.studyLanguage != studyLanguage) {
+        continue;
+      }
+      final key =
+          '${plan.generatedAt}:${plan.summary.substring(0, plan.summary.length > 40 ? 40 : plan.summary.length)}';
+      if (!seen.add(key)) continue;
+      filtered.add(plan);
+    }
+    filtered.sort(
+      (a, b) => (b.generatedAt ?? DateTime(0)).compareTo(
+        a.generatedAt ?? DateTime(0),
+      ),
+    );
+    return filtered;
   }
 
   Future<ProductionAssignment?> fetchAssignment(String id) async {
@@ -83,7 +130,9 @@ class StudyCoachRepository {
     if (data is! Map) {
       throw StateError('Resposta inválida da correção.');
     }
-    final result = CorrectSentenceResult.fromRow(Map<String, dynamic>.from(data));
+    final result = CorrectSentenceResult.fromRow(
+      Map<String, dynamic>.from(data),
+    );
     if (result == null) throw StateError('Não foi possível corrigir o texto.');
     return result;
   }

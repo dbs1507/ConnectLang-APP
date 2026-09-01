@@ -22,12 +22,12 @@ class DictationMistake {
   final String? note;
 
   Map<String, dynamic> toJson() => {
-        'expected': expected,
-        'answer': answer,
-        'index': index,
-        'severity': severity,
-        if (note != null) 'note': note,
-      };
+    'expected': expected,
+    'answer': answer,
+    'index': index,
+    'severity': severity,
+    if (note != null) 'note': note,
+  };
 }
 
 class DictationScoreResult {
@@ -38,12 +38,39 @@ class DictationScoreResult {
 }
 
 const Map<String, String> _diacriticMap = {
-  'á': 'a', 'à': 'a', 'â': 'a', 'ã': 'a', 'ä': 'a', 'å': 'a', 'ā': 'a',
-  'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e', 'ē': 'e',
-  'í': 'i', 'ì': 'i', 'î': 'i', 'ï': 'i', 'ī': 'i',
-  'ó': 'o', 'ò': 'o', 'ô': 'o', 'õ': 'o', 'ö': 'o', 'ø': 'o', 'ō': 'o',
-  'ú': 'u', 'ù': 'u', 'û': 'u', 'ü': 'u', 'ū': 'u',
-  'ç': 'c', 'ñ': 'n', 'ý': 'y', 'ÿ': 'y',
+  'á': 'a',
+  'à': 'a',
+  'â': 'a',
+  'ã': 'a',
+  'ä': 'a',
+  'å': 'a',
+  'ā': 'a',
+  'é': 'e',
+  'è': 'e',
+  'ê': 'e',
+  'ë': 'e',
+  'ē': 'e',
+  'í': 'i',
+  'ì': 'i',
+  'î': 'i',
+  'ï': 'i',
+  'ī': 'i',
+  'ó': 'o',
+  'ò': 'o',
+  'ô': 'o',
+  'õ': 'o',
+  'ö': 'o',
+  'ø': 'o',
+  'ō': 'o',
+  'ú': 'u',
+  'ù': 'u',
+  'û': 'u',
+  'ü': 'u',
+  'ū': 'u',
+  'ç': 'c',
+  'ñ': 'n',
+  'ý': 'y',
+  'ÿ': 'y',
 };
 
 String _stripDiacritics(String value) {
@@ -78,7 +105,10 @@ int _levenshteinDistance(String a, String b) {
   for (var i = 1; i <= rows; i++) {
     for (var j = 1; j <= cols; j++) {
       final cost = a[i - 1] == b[j - 1] ? 0 : 1;
-      dp[i][j] = math.min(dp[i - 1][j] + 1, math.min(dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost));
+      dp[i][j] = math.min(
+        dp[i - 1][j] + 1,
+        math.min(dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost),
+      );
     }
   }
   return dp[rows][cols];
@@ -89,8 +119,12 @@ bool _isDoubledLetterNameVariant(String expected, String answer) {
   final answerPlain = _stripDiacritics(answer);
   if (expectedPlain == answerPlain) return false;
   if ((expectedPlain.length - answerPlain.length).abs() != 1) return false;
-  final longer = expectedPlain.length > answerPlain.length ? expectedPlain : answerPlain;
-  final shorter = expectedPlain.length > answerPlain.length ? answerPlain : expectedPlain;
+  final longer = expectedPlain.length > answerPlain.length
+      ? expectedPlain
+      : answerPlain;
+  final shorter = expectedPlain.length > answerPlain.length
+      ? answerPlain
+      : expectedPlain;
   if (shorter.length < 3) return false;
   for (var i = 0; i < longer.length; i++) {
     final candidate = longer.substring(0, i) + longer.substring(i + 1);
@@ -109,7 +143,9 @@ String _tokenMatchKind(String expected, String answer) {
   if (minLength < 4) return 'major';
   final distance = _levenshteinDistance(expectedPlain, answerPlain);
   if (distance <= 1) return 'minor';
-  if (minLength >= 7 && distance <= 2 && distance / minLength <= 0.25) return 'minor';
+  if (minLength >= 7 && distance <= 2 && distance / minLength <= 0.25) {
+    return 'minor';
+  }
   return 'major';
 }
 
@@ -138,7 +174,10 @@ class _DiffOp {
   final int answerIndex;
 }
 
-List<_DiffOp> _alignDictationTokens(List<String> expectedTokens, List<String> answerTokens) {
+List<_DiffOp> _alignDictationTokens(
+  List<String> expectedTokens,
+  List<String> answerTokens,
+) {
   final rows = expectedTokens.length;
   final cols = answerTokens.length;
   final dp = List.generate(rows + 1, (_) => List<double>.filled(cols + 1, 0));
@@ -151,8 +190,14 @@ List<_DiffOp> _alignDictationTokens(List<String> expectedTokens, List<String> an
 
   for (var i = 1; i <= rows; i++) {
     for (var j = 1; j <= cols; j++) {
-      final substitutionCost = _tokenAlignmentCost(expectedTokens[i - 1], answerTokens[j - 1]);
-      dp[i][j] = math.min(dp[i - 1][j - 1] + substitutionCost, math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1));
+      final substitutionCost = _tokenAlignmentCost(
+        expectedTokens[i - 1],
+        answerTokens[j - 1],
+      );
+      dp[i][j] = math.min(
+        dp[i - 1][j - 1] + substitutionCost,
+        math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1),
+      );
     }
   }
 
@@ -165,13 +210,33 @@ List<_DiffOp> _alignDictationTokens(List<String> expectedTokens, List<String> an
     final answer = j > 0 ? answerTokens[j - 1] : '';
 
     if (i > 0 && j > 0 && expected == answer && dp[i][j] == dp[i - 1][j - 1]) {
-      ops.add(_DiffOp(type: _DiffOpType.match, expected: expected, answer: answer, expectedIndex: i - 1, answerIndex: j - 1));
+      ops.add(
+        _DiffOp(
+          type: _DiffOpType.match,
+          expected: expected,
+          answer: answer,
+          expectedIndex: i - 1,
+          answerIndex: j - 1,
+        ),
+      );
       i -= 1;
       j -= 1;
       continue;
     }
-    if (i > 0 && j > 0 && _tokenMatchKind(expected, answer) == 'exact' && expected != answer && dp[i][j] == dp[i - 1][j - 1]) {
-      ops.add(_DiffOp(type: _DiffOpType.match, expected: expected, answer: answer, expectedIndex: i - 1, answerIndex: j - 1));
+    if (i > 0 &&
+        j > 0 &&
+        _tokenMatchKind(expected, answer) == 'exact' &&
+        expected != answer &&
+        dp[i][j] == dp[i - 1][j - 1]) {
+      ops.add(
+        _DiffOp(
+          type: _DiffOpType.match,
+          expected: expected,
+          answer: answer,
+          expectedIndex: i - 1,
+          answerIndex: j - 1,
+        ),
+      );
       i -= 1;
       j -= 1;
       continue;
@@ -180,23 +245,53 @@ List<_DiffOp> _alignDictationTokens(List<String> expectedTokens, List<String> an
         j > 0 &&
         _tokenMatchKind(expected, answer) == 'minor' &&
         dp[i][j] == dp[i - 1][j - 1] + _tokenAlignmentCost(expected, answer)) {
-      ops.add(_DiffOp(type: _DiffOpType.minor, expected: expected, answer: answer, expectedIndex: i - 1, answerIndex: j - 1));
+      ops.add(
+        _DiffOp(
+          type: _DiffOpType.minor,
+          expected: expected,
+          answer: answer,
+          expectedIndex: i - 1,
+          answerIndex: j - 1,
+        ),
+      );
       i -= 1;
       j -= 1;
       continue;
     }
     if (i > 0 && dp[i][j] == dp[i - 1][j] + 1) {
-      ops.add(_DiffOp(type: _DiffOpType.delete, expected: expected, expectedIndex: i - 1, answerIndex: j));
+      ops.add(
+        _DiffOp(
+          type: _DiffOpType.delete,
+          expected: expected,
+          expectedIndex: i - 1,
+          answerIndex: j,
+        ),
+      );
       i -= 1;
       continue;
     }
     if (j > 0 && dp[i][j] == dp[i][j - 1] + 1) {
-      ops.add(_DiffOp(type: _DiffOpType.insert, answer: answer, expectedIndex: i, answerIndex: j - 1));
+      ops.add(
+        _DiffOp(
+          type: _DiffOpType.insert,
+          answer: answer,
+          expectedIndex: i,
+          answerIndex: j - 1,
+        ),
+      );
       j -= 1;
       continue;
     }
     if (i > 0 && j > 0) {
-      ops.add(_DiffOp(type: _DiffOpType.substitute, expected: expected, answer: answer, expectedIndex: i - 1, answerIndex: j - 1));
+      ops.add(
+        _DiffOp(
+          type: _DiffOpType.substitute,
+          expected: expected,
+          answer: answer,
+          expectedIndex: i - 1,
+          answerIndex: j - 1,
+        ),
+      );
       i -= 1;
       j -= 1;
       continue;
@@ -210,8 +305,12 @@ List<_DiffOp> _alignDictationTokens(List<String> expectedTokens, List<String> an
 const double _minorMistakeWeight = 0.1;
 
 DictationScoreResult scoreDictationAnswer(String expected, String answer) {
-  final expectedTokens = _normalizeForDictation(expected).split(' ').where((t) => t.isNotEmpty).toList();
-  final answerTokens = _normalizeForDictation(answer).split(' ').where((t) => t.isNotEmpty).toList();
+  final expectedTokens = _normalizeForDictation(
+    expected,
+  ).split(' ').where((t) => t.isNotEmpty).toList();
+  final answerTokens = _normalizeForDictation(
+    answer,
+  ).split(' ').where((t) => t.isNotEmpty).toList();
   final total = math.max(expectedTokens.length, 1);
   final ops = _alignDictationTokens(expectedTokens, answerTokens);
 
@@ -221,20 +320,41 @@ DictationScoreResult scoreDictationAnswer(String expected, String answer) {
       case _DiffOpType.match:
         break;
       case _DiffOpType.minor:
-        mistakes.add(DictationMistake(
-          expected: op.expected!,
-          answer: op.answer!,
-          index: op.expectedIndex,
-          severity: 'minor',
-          note: '${op.answer} → ${op.expected}',
-        ));
+        mistakes.add(
+          DictationMistake(
+            expected: op.expected!,
+            answer: op.answer!,
+            index: op.expectedIndex,
+            severity: 'minor',
+            note: '${op.answer} → ${op.expected}',
+          ),
+        );
       case _DiffOpType.delete:
-        mistakes.add(DictationMistake(expected: op.expected!, answer: '', index: op.expectedIndex, severity: 'major'));
+        mistakes.add(
+          DictationMistake(
+            expected: op.expected!,
+            answer: '',
+            index: op.expectedIndex,
+            severity: 'major',
+          ),
+        );
       case _DiffOpType.insert:
-        mistakes.add(DictationMistake(expected: '', answer: op.answer!, index: op.expectedIndex, severity: 'major'));
+        mistakes.add(
+          DictationMistake(
+            expected: '',
+            answer: op.answer!,
+            index: op.expectedIndex,
+            severity: 'major',
+          ),
+        );
       case _DiffOpType.substitute:
         mistakes.add(
-          DictationMistake(expected: op.expected!, answer: op.answer!, index: op.expectedIndex, severity: 'major'),
+          DictationMistake(
+            expected: op.expected!,
+            answer: op.answer!,
+            index: op.expectedIndex,
+            severity: 'major',
+          ),
         );
     }
   }
@@ -251,7 +371,12 @@ DictationScoreResult scoreDictationAnswer(String expected, String answer) {
 /// Resultado final (local ou combinado com a IA) — porte de
 /// `DictationGradingResult` do web.
 class DictationGradingResult {
-  const DictationGradingResult({required this.score, required this.mistakes, required this.source, this.feedback});
+  const DictationGradingResult({
+    required this.score,
+    required this.mistakes,
+    required this.source,
+    this.feedback,
+  });
 
   final int score;
   final List<DictationMistake> mistakes;
@@ -283,15 +408,23 @@ bool _isValidAiGrade(Map<String, dynamic>? raw, int expectedWordCount) {
 /// calculada) com a resposta da edge function `dictation-grade`, com as
 /// mesmas salvaguardas (IA não pode zerar erros reais nem inflar a nota
 /// quando o local já achou erro grave/typo).
-DictationGradingResult mergeDictationGrades(DictationScoreResult local, Map<String, dynamic>? aiRow) {
+DictationGradingResult mergeDictationGrades(
+  DictationScoreResult local,
+  Map<String, dynamic>? aiRow,
+) {
   final expectedWordCount = math.max(1, local.mistakes.length + 4);
   if (!_isValidAiGrade(aiRow, expectedWordCount)) {
-    return DictationGradingResult(score: local.score, mistakes: local.mistakes, source: 'local');
+    return DictationGradingResult(
+      score: local.score,
+      mistakes: local.mistakes,
+      source: 'local',
+    );
   }
 
   final aiMistakesRaw = (aiRow!['mistakes'] as List).whereType<Map>().toList();
   final mistakes = [
-    for (var i = 0; i < aiMistakesRaw.length; i++) _normalizeMistake(Map<String, dynamic>.from(aiMistakesRaw[i]), i),
+    for (var i = 0; i < aiMistakesRaw.length; i++)
+      _normalizeMistake(Map<String, dynamic>.from(aiMistakesRaw[i]), i),
   ];
   final localMajor = local.mistakes.where((m) => m.severity != 'minor').length;
   final localMinor = local.mistakes.where((m) => m.severity == 'minor').length;
@@ -301,7 +434,11 @@ DictationGradingResult mergeDictationGrades(DictationScoreResult local, Map<Stri
 
   // IA ignorou erros reais (omissões ou typos) — confia no local.
   if (local.mistakes.isNotEmpty && mistakes.isEmpty) {
-    return DictationGradingResult(score: local.score, mistakes: local.mistakes, source: 'hybrid');
+    return DictationGradingResult(
+      score: local.score,
+      mistakes: local.mistakes,
+      source: 'hybrid',
+    );
   }
 
   if (aiMajor > 0 && score == 100) score = local.score;
@@ -311,19 +448,18 @@ DictationGradingResult mergeDictationGrades(DictationScoreResult local, Map<Stri
   // Typos/acentos locais: não deixar a IA devolver 100%.
   if (localMinor > 0) score = math.min(math.min(score, local.score), 99);
   if (score < local.score - 25) score = local.score;
-  if ((localMajor > 0 || localMinor > 0 || mistakes.isNotEmpty) && score >= 100) {
+  if ((localMajor > 0 || localMinor > 0 || mistakes.isNotEmpty) &&
+      score >= 100) {
     score = math.min(99, local.score);
   }
 
   // Preferir notas locais de typo quando a IA não detalhou o minor.
-  final mergedMistakes = localMinor > 0 && mistakes.every((m) => m.severity != 'minor')
+  final mergedMistakes =
+      localMinor > 0 && mistakes.every((m) => m.severity != 'minor')
       ? [...mistakes, ...local.mistakes.where((m) => m.severity == 'minor')]
       : [
           for (final m in mistakes)
-            if (m.note != null)
-              m
-            else
-              _withLocalTwinNote(m, local),
+            if (m.note != null) m else _withLocalTwinNote(m, local),
         ];
 
   return DictationGradingResult(
@@ -334,10 +470,22 @@ DictationGradingResult mergeDictationGrades(DictationScoreResult local, Map<Stri
   );
 }
 
-DictationMistake _withLocalTwinNote(DictationMistake m, DictationScoreResult local) {
+DictationMistake _withLocalTwinNote(
+  DictationMistake m,
+  DictationScoreResult local,
+) {
   for (final lm in local.mistakes) {
-    if (lm.severity == 'minor' && lm.expected == m.expected && lm.answer == m.answer && lm.note != null) {
-      return DictationMistake(expected: m.expected, answer: m.answer, index: m.index, severity: m.severity, note: lm.note);
+    if (lm.severity == 'minor' &&
+        lm.expected == m.expected &&
+        lm.answer == m.answer &&
+        lm.note != null) {
+      return DictationMistake(
+        expected: m.expected,
+        answer: m.answer,
+        index: m.index,
+        severity: m.severity,
+        note: lm.note,
+      );
     }
   }
   return m;

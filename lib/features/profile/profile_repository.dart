@@ -11,9 +11,9 @@ class ProfileRepository {
     required String fullName,
     required List<String> studyLanguages,
   }) async {
-    await supabase.from('profiles').update({
-      'full_name': fullName,
-      'profile_languages': studyLanguages,
-    }).eq('id', userId);
+    await supabase
+        .from('profiles')
+        .update({'full_name': fullName, 'profile_languages': studyLanguages})
+        .eq('id', userId);
   }
 }

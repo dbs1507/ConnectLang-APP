@@ -65,7 +65,11 @@ class StudyCoachAction {
 }
 
 class StudyCoachEvidenceItem {
-  const StudyCoachEvidenceItem({required this.text, this.route, this.linkLabel});
+  const StudyCoachEvidenceItem({
+    required this.text,
+    this.route,
+    this.linkLabel,
+  });
 
   final String text;
   final String? route;
@@ -89,6 +93,8 @@ class StudyCoachPlan {
     required this.generatedAt,
     required this.source,
     required this.cached,
+    this.studyLanguage,
+    this.planDate,
   });
 
   final String summary;
@@ -98,40 +104,56 @@ class StudyCoachPlan {
   final DateTime? generatedAt;
   final String source; // 'ai' | 'fallback'
   final bool cached;
+  final String? studyLanguage;
+  final String? planDate;
 
   static StudyCoachPlan? fromRow(Map<String, dynamic> row) {
     final summary = (row['summary'] as String? ?? '').trim();
     final rawActions = row['nextActions'];
     final nextActions = rawActions is List
         ? rawActions
-            .whereType<Map>()
-            .map((a) => StudyCoachAction.fromRow(Map<String, dynamic>.from(a)))
-            .where((a) => a.title.isNotEmpty && a.route.isNotEmpty)
-            .toList()
+              .whereType<Map>()
+              .map(
+                (a) => StudyCoachAction.fromRow(Map<String, dynamic>.from(a)),
+              )
+              .where((a) => a.title.isNotEmpty && a.route.isNotEmpty)
+              .toList()
         : <StudyCoachAction>[];
     if (summary.isEmpty || nextActions.isEmpty) return null;
 
     final rawEvidence = row['evidence'];
     final evidence = rawEvidence is List
         ? rawEvidence
-            .whereType<Map>()
-            .map((e) => StudyCoachEvidenceItem.fromRow(Map<String, dynamic>.from(e)))
-            .where((e) => e.text.isNotEmpty)
-            .take(5)
-            .toList()
+              .whereType<Map>()
+              .map(
+                (e) => StudyCoachEvidenceItem.fromRow(
+                  Map<String, dynamic>.from(e),
+                ),
+              )
+              .where((e) => e.text.isNotEmpty)
+              .take(5)
+              .toList()
         : <StudyCoachEvidenceItem>[];
 
     final rawFocus = row['focusAreas'];
-    final focusAreas = rawFocus is List ? rawFocus.map((e) => e.toString()).where((e) => e.isNotEmpty).toList() : <String>[];
+    final focusAreas = rawFocus is List
+        ? rawFocus.map((e) => e.toString()).where((e) => e.isNotEmpty).toList()
+        : <String>[];
 
     return StudyCoachPlan(
       summary: summary,
       focusAreas: focusAreas,
       nextActions: nextActions,
       evidence: evidence,
-      generatedAt: DateTime.tryParse(row['generatedAt'] as String? ?? ''),
+      generatedAt: DateTime.tryParse(
+        row['generatedAt'] as String? ?? row['generated_at'] as String? ?? '',
+      ),
       source: row['source'] == 'ai' ? 'ai' : 'fallback',
       cached: row['cached'] == true,
+      studyLanguage:
+          (row['studyLanguage'] as String? ?? row['study_language'] as String?)
+              ?.toUpperCase(),
+      planDate: row['planDate'] as String? ?? row['plan_date'] as String?,
     );
   }
 }

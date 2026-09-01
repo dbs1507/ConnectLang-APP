@@ -19,7 +19,11 @@ class SubscriptionInactivePage extends ConsumerWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.lock_outline, size: 48, color: Theme.of(context).colorScheme.primary),
+                Icon(
+                  Icons.lock_outline,
+                  size: 48,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
                 const SizedBox(height: 16),
                 const Text(
                   'Sua assinatura não está ativa.\nAssine pelo site para continuar estudando.',
@@ -27,12 +31,15 @@ class SubscriptionInactivePage extends ConsumerWidget {
                 ),
                 const SizedBox(height: 24),
                 OutlinedButton(
-                  onPressed: () => ref.read(authControllerProvider.notifier).refreshProfile(),
+                  onPressed: () => ref
+                      .read(authControllerProvider.notifier)
+                      .refreshProfile(),
                   child: const Text('Já assinei, atualizar'),
                 ),
                 const SizedBox(height: 8),
                 TextButton(
-                  onPressed: () => ref.read(authControllerProvider.notifier).logout(),
+                  onPressed: () =>
+                      ref.read(authControllerProvider.notifier).logout(),
                   child: const Text('Sair'),
                 ),
               ],
