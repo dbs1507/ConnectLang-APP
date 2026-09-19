@@ -40,6 +40,7 @@ class DashboardOpenAssignment {
     this.cefr,
     this.focusTags = const [],
     this.targetCount,
+    this.textId,
   });
 
   final String id;
@@ -49,6 +50,7 @@ class DashboardOpenAssignment {
   final String? cefr;
   final List<String> focusTags;
   final int? targetCount;
+  final String? textId;
 
   String get label => switch (kind) {
     'vocab_review' => 'Revisar vocabulário',
@@ -206,6 +208,10 @@ class SubscriberDashboardRepository {
               targetCount:
                   (payload['targetCount'] as num?)?.toInt() ??
                   (payload['target_count'] as num?)?.toInt(),
+              textId:
+                  (payload['textId'] as String? ??
+                          payload['text_id'] as String?)
+                      ?.trim(),
             );
           }(),
       ];

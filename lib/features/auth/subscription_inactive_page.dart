@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_lucide/flutter_lucide.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/session/auth_controller.dart';
@@ -20,7 +21,7 @@ class SubscriptionInactivePage extends ConsumerWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
-                  Icons.lock_outline,
+                  LucideIcons.lock,
                   size: 48,
                   color: Theme.of(context).colorScheme.primary,
                 ),

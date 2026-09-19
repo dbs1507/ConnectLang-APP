@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_lucide/flutter_lucide.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/supabase_client.dart';
@@ -66,7 +67,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
-                          Icons.check_circle,
+                          LucideIcons.circle_check,
                           size: 48,
                           color: Theme.of(context).colorScheme.primary,
                         ),
@@ -93,8 +94,8 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                               suffixIcon: IconButton(
                                 icon: Icon(
                                   _obscure
-                                      ? Icons.visibility
-                                      : Icons.visibility_off,
+                                      ? LucideIcons.eye
+                                      : LucideIcons.eye_off,
                                 ),
                                 onPressed: () =>
                                     setState(() => _obscure = !_obscure),
@@ -127,17 +128,20 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                             ),
                           ],
                           const SizedBox(height: 16),
-                          FilledButton(
-                            onPressed: _submitting ? null : _submit,
-                            child: _submitting
-                                ? const SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Text('Salvar senha'),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton(
+                              onPressed: _submitting ? null : _submit,
+                              child: _submitting
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Text('Salvar senha'),
+                            ),
                           ),
                         ],
                       ),

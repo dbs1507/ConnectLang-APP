@@ -113,5 +113,25 @@ void main() {
       expect(merged.source, 'hybrid');
       expect(merged.mistakes.any((m) => m.severity == 'minor'), isTrue);
     });
+
+    test('generic AI notes still keep local expected/answer tokens', () {
+      final local = scoreDictationAnswer(
+        'They went to the park yesterday and saw a rainbow',
+        'They went to the park westerday and we saw a rainbow',
+      );
+      final merged = mergeDictationGrades(local, {
+        'score': 90,
+        'mistakes': [
+          {'expected': '', 'answer': '', 'index': 5, 'severity': 'minor', 'note': 'Erro de digitação comum.'},
+          {'expected': '', 'answer': '', 'index': 7, 'severity': 'major', 'note': 'Pronome incorreto.'},
+        ],
+      });
+      expect(merged.mistakes.any((m) => m.answer == 'westerday' && m.expected == 'yesterday'), isTrue);
+      expect(
+        merged.mistakes.any((m) => m.answer == 'we' && m.expected.isEmpty) ||
+            merged.mistakes.any((m) => m.answer == 'we'),
+        isTrue,
+      );
+    });
   });
 }

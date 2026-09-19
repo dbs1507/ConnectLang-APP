@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_lucide/flutter_lucide.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../notebook/notebook_fab.dart';
@@ -168,7 +169,7 @@ class _ProductionDemandPageState extends ConsumerState<ProductionDemandPage> {
               padding: EdgeInsets.all(16),
               child: Row(
                 children: [
-                  Icon(Icons.check_circle, color: Colors.green),
+                  Icon(LucideIcons.circle_check, color: Colors.green),
                   SizedBox(width: 12),
                   Expanded(child: Text('Você já concluiu esta tarefa.')),
                 ],
@@ -221,7 +222,7 @@ class _ProductionDemandPageState extends ConsumerState<ProductionDemandPage> {
             children: [
               Row(
                 children: [
-                  Icon(Icons.check_circle, color: Colors.green.shade700),
+                  Icon(LucideIcons.circle_check, color: Colors.green.shade700),
                   const SizedBox(width: 8),
                   Text(
                     'Correção',

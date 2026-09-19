@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_lucide/flutter_lucide.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 
@@ -376,7 +377,7 @@ class _PlacementSessionPageState extends ConsumerState<PlacementSessionPage> {
                             height: 16,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Icon(Icons.play_arrow),
+                        : const Icon(LucideIcons.play),
                     label: const Text('Ouvir áudio'),
                   ),
                 ),
@@ -494,7 +495,7 @@ class _PlacementSessionPageState extends ConsumerState<PlacementSessionPage> {
           children: [
             Row(
               children: [
-                Icon(ok ? Icons.check_circle : Icons.cancel, color: color),
+                Icon(ok ? LucideIcons.circle_check : LucideIcons.circle_x, color: color),
                 const SizedBox(width: 8),
                 Text(
                   _freeTextSubmitted
@@ -571,7 +572,7 @@ class _ResultView extends StatelessWidget {
           padding: const EdgeInsets.all(24),
           children: [
             Icon(
-              Icons.emoji_events_outlined,
+              LucideIcons.trophy,
               size: 48,
               color: Theme.of(context).colorScheme.primary,
             ),

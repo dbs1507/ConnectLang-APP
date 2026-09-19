@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_lucide/flutter_lucide.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'models/srs_rating.dart';
@@ -69,7 +70,7 @@ class _FlashcardPracticePageState extends ConsumerState<FlashcardPracticePage> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
-                  Icons.check_circle,
+                  LucideIcons.circle_check,
                   size: 48,
                   color: Theme.of(context).colorScheme.primary,
                 ),

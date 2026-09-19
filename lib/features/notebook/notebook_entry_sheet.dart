@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_lucide/flutter_lucide.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../design_system/theme/app_colors.dart';
+import '../../design_system/theme/app_radius.dart';
+import '../../design_system/theme/app_spacing.dart';
 import '../library/library_controller.dart';
 import '../library/models/library_text.dart';
 import '../vocabulary/models/vocabulary_entry.dart';
@@ -9,9 +13,7 @@ import 'models/notebook_entry.dart';
 import 'notebook_controller.dart';
 
 class NotebookEntrySheet extends ConsumerStatefulWidget {
-  const NotebookEntrySheet({super.key, this.entry});
-
-  final NotebookEntry? entry;
+  const NotebookEntrySheet({super.key});
 
   @override
   ConsumerState<NotebookEntrySheet> createState() => _NotebookEntrySheetState();
@@ -29,10 +31,8 @@ class _NotebookEntrySheetState extends ConsumerState<NotebookEntrySheet> {
   @override
   void initState() {
     super.initState();
-    _contentController = TextEditingController(
-      text: widget.entry?.content ?? '',
-    );
-    _language = widget.entry?.language ?? 'EN';
+    _contentController = TextEditingController();
+    _language = 'EN';
   }
 
   @override
@@ -62,24 +62,13 @@ class _NotebookEntrySheetState extends ConsumerState<NotebookEntrySheet> {
         linkLabel = _linkedText!.title;
       }
 
-      if (widget.entry == null) {
-        await notifier.addEntry(
-          content: _contentController.text,
-          language: _language,
-          linkType: linkType,
-          linkId: linkId,
-          linkLabel: linkLabel,
-        );
-      } else {
-        await notifier.updateEntry(
-          entryId: widget.entry!.id,
-          content: _contentController.text,
-          language: _language,
-          linkType: linkType ?? widget.entry!.linkType,
-          linkId: linkId ?? widget.entry!.linkId,
-          linkLabel: linkLabel ?? widget.entry!.linkLabel,
-        );
-      }
+      await notifier.addEntry(
+        content: _contentController.text,
+        language: _language,
+        linkType: linkType,
+        linkId: linkId,
+        linkLabel: linkLabel,
+      );
       if (mounted) Navigator.of(context).pop();
     } catch (_) {
       setState(() => _error = 'Não foi possível salvar. Tente novamente.');
@@ -96,14 +85,14 @@ class _NotebookEntrySheetState extends ConsumerState<NotebookEntrySheet> {
     final textOptions =
         ref.watch(libraryControllerProvider).value?.texts ??
         const <LibraryText>[];
-    final isEditing = widget.entry != null;
+    final textTheme = Theme.of(context).textTheme;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
-        24,
-        24,
-        24,
-        MediaQuery.of(context).viewInsets.bottom + 24,
+        AppSpacing.xl,
+        AppSpacing.md,
+        AppSpacing.xl,
+        MediaQuery.of(context).viewInsets.bottom + AppSpacing.xl,
       ),
       child: Form(
         key: _formKey,
@@ -113,10 +102,10 @@ class _NotebookEntrySheetState extends ConsumerState<NotebookEntrySheet> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                isEditing ? 'Editar nota' : 'Nova nota',
-                style: Theme.of(context).textTheme.titleLarge,
+                'Nova nota',
+                style: textTheme.headlineSmall,
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpacing.lg),
               DropdownButtonFormField<String>(
                 initialValue: _language,
                 decoration: const InputDecoration(labelText: 'Idioma'),
@@ -130,7 +119,7 @@ class _NotebookEntrySheetState extends ConsumerState<NotebookEntrySheet> {
                 onChanged: (value) =>
                     setState(() => _language = value ?? _language),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpacing.md),
               TextFormField(
                 controller: _contentController,
                 decoration: const InputDecoration(labelText: 'Nota'),
@@ -141,7 +130,7 @@ class _NotebookEntrySheetState extends ConsumerState<NotebookEntrySheet> {
                     : null,
               ),
               if (vocabularyOptions.isNotEmpty) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSpacing.md),
                 DropdownButtonFormField<VocabularyEntry?>(
                   initialValue: _linkedVocabulary,
                   decoration: const InputDecoration(
@@ -159,7 +148,7 @@ class _NotebookEntrySheetState extends ConsumerState<NotebookEntrySheet> {
                 ),
               ],
               if (textOptions.isNotEmpty) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSpacing.md),
                 DropdownButtonFormField<LibraryText?>(
                   initialValue: _linkedText,
                   decoration: const InputDecoration(
@@ -184,20 +173,25 @@ class _NotebookEntrySheetState extends ConsumerState<NotebookEntrySheet> {
                 ),
               ],
               if (_error != null) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpacing.sm),
                 Text(
                   _error!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                  style: textTheme.bodyMedium?.copyWith(
+                    color: AppColors.destructive,
+                  ),
                 ),
               ],
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpacing.lg),
               FilledButton(
                 onPressed: _submitting ? null : _submit,
                 child: _submitting
                     ? const SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
                       )
                     : const Text('Salvar'),
               ),
@@ -209,10 +203,14 @@ class _NotebookEntrySheetState extends ConsumerState<NotebookEntrySheet> {
   }
 }
 
-void showNotebookComposer(BuildContext context, {NotebookEntry? entry}) {
-  showModalBottomSheet(
+void showNotebookComposer(BuildContext context) {
+  showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    builder: (_) => NotebookEntrySheet(entry: entry),
+    showDragHandle: true,
+    useSafeArea: true,
+    backgroundColor: AppColors.background,
+    shape: const RoundedRectangleBorder(borderRadius: AppRadius.sheet),
+    builder: (_) => const NotebookEntrySheet(),
   );
 }

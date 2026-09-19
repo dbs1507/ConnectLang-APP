@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_lucide/flutter_lucide.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -125,12 +126,12 @@ class _SubscriberDashboardPageState
         title: const Text('ConnectLang'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.person_outline),
+            icon: const Icon(LucideIcons.user),
             tooltip: 'Perfil',
             onPressed: () => _openPath(LearnerPaths.profile()),
           ),
           IconButton(
-            icon: const Icon(Icons.logout),
+            icon: const Icon(LucideIcons.log_out),
             tooltip: 'Sair',
             onPressed: () => ref.read(authControllerProvider.notifier).logout(),
           ),
@@ -213,9 +214,9 @@ class _SubscriberDashboardPageState
                 for (final assignment in data.openAssignments)
                   Card(
                     child: ListTile(
-                      leading: const Icon(Icons.task_alt_outlined),
+                      leading: const Icon(LucideIcons.list_checks),
                       title: Text(assignment.label),
-                      trailing: const Icon(Icons.chevron_right),
+                      trailing: const Icon(LucideIcons.chevron_right),
                       onTap: () => _openAssignment(assignment),
                     ),
                   ),
@@ -224,13 +225,13 @@ class _SubscriberDashboardPageState
                 const SizedBox(height: 8),
                 Card(
                   child: ListTile(
-                    leading: const Icon(Icons.auto_awesome),
+                    leading: const Icon(LucideIcons.astroid),
                     title: Text(
                       data!.unreviewedAiNotes == 1
                           ? '1 nota de IA pra revisitar'
                           : '${data.unreviewedAiNotes} notas de IA pra revisitar',
                     ),
-                    trailing: const Icon(Icons.chevron_right),
+                    trailing: const Icon(LucideIcons.chevron_right),
                     onTap: () =>
                         _openPath(LearnerPaths.notebook(_role, aiOnly: true)),
                   ),
@@ -296,22 +297,22 @@ class _SubscriberDashboardPageState
                   runSpacing: 8,
                   children: [
                     _ShortcutChip(
-                      icon: Icons.style_outlined,
+                      icon: LucideIcons.square_stack,
                       label: 'Vocabulário',
                       onTap: () => _openPath(LearnerPaths.vocabulary(_role)),
                     ),
                     _ShortcutChip(
-                      icon: Icons.edit_note,
+                      icon: LucideIcons.notebook_pen,
                       label: 'Caderno',
                       onTap: () => _openPath(LearnerPaths.notebook(_role)),
                     ),
                     _ShortcutChip(
-                      icon: Icons.menu_book_outlined,
+                      icon: LucideIcons.book,
                       label: 'Biblioteca',
                       onTap: () => _openPath(LearnerPaths.library(_role)),
                     ),
                     _ShortcutChip(
-                      icon: Icons.headphones,
+                      icon: LucideIcons.headphones,
                       label: 'Ditado',
                       onTap: () => _openPath(
                         LearnerPaths.dictation(
@@ -323,21 +324,21 @@ class _SubscriberDashboardPageState
                       ),
                     ),
                     _ShortcutChip(
-                      icon: Icons.school_outlined,
+                      icon: LucideIcons.graduation_cap,
                       label: 'Nivelamento',
                       onTap: () => _openPath(
                         LearnerPaths.placement(_role, lang: _studyLanguage),
                       ),
                     ),
                     _ShortcutChip(
-                      icon: Icons.auto_awesome,
+                      icon: LucideIcons.astroid,
                       label: 'Study Coach',
                       onTap: () => _openPath(
                         LearnerPaths.coach(_role, lang: _studyLanguage),
                       ),
                     ),
                     _ShortcutChip(
-                      icon: Icons.card_membership_outlined,
+                      icon: LucideIcons.credit_card,
                       label: 'Assinatura',
                       onTap: () => _openPath(LearnerPaths.subscription),
                     ),
@@ -440,7 +441,7 @@ class _TodayPlanCard extends StatelessWidget {
             Row(
               children: [
                 Icon(
-                  Icons.auto_awesome,
+                  LucideIcons.astroid,
                   size: 18,
                   color: Theme.of(context).colorScheme.primary,
                 ),
@@ -463,7 +464,7 @@ class _TodayPlanCard extends StatelessWidget {
                 contentPadding: EdgeInsets.zero,
                 dense: true,
                 title: Text(action.title),
-                trailing: const Icon(Icons.chevron_right),
+                trailing: const Icon(LucideIcons.chevron_right),
                 onTap: () => onOpenAction(action),
               ),
           ],

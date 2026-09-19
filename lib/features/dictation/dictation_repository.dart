@@ -3,6 +3,7 @@ import 'dart:math';
 import '../../core/supabase_client.dart';
 import 'models/dictation_item.dart';
 import 'models/dictation_next_result.dart';
+import 'models/dictation_recent_session.dart';
 import 'models/dictation_score.dart';
 
 const _itemColumns =
@@ -20,18 +21,38 @@ class DictationRepository {
 
   Future<List<DictationItem>> fetchFreeItems({
     required String language,
+    String? cefr,
+    List<String> focusTags = const [],
     int limit = 8,
   }) async {
-    final rows = await supabase
-        .from('dictation_items')
-        .select(_itemColumns)
-        .eq('is_free_practice', true)
-        .eq('language', language)
-        .order('created_at', ascending: false)
-        .limit(50);
-    final items = (rows as List)
-        .map((row) => DictationItem.fromRow(row as Map<String, dynamic>))
-        .toList();
+    Future<List<DictationItem>> load({String? level}) async {
+      var query = supabase
+          .from('dictation_items')
+          .select(_itemColumns)
+          .eq('is_free_practice', true)
+          .eq('language', language);
+      if (level != null && level.isNotEmpty) {
+        query = query.eq('cefr', level);
+      }
+      final rows = await query
+          .order('created_at', ascending: false)
+          .limit(80)
+          .timeout(const Duration(seconds: 4));
+      return (rows as List)
+          .map((row) => DictationItem.fromRow(row as Map<String, dynamic>))
+          .toList();
+    }
+
+    var items = await load(level: cefr);
+    if (items.length < limit && cefr != null && cefr.isNotEmpty) {
+      items = await load();
+    }
+    if (focusTags.isNotEmpty) {
+      final tagged = items
+          .where((item) => item.practiceTags.any(focusTags.contains))
+          .toList();
+      if (tagged.length >= 3) items = tagged;
+    }
     items.shuffle(Random());
     return items.take(limit).toList();
   }
@@ -54,7 +75,7 @@ class DictationRepository {
               if (focusTags.isNotEmpty) 'focusTags': focusTags,
             },
           )
-          .timeout(const Duration(seconds: 45));
+          .timeout(const Duration(seconds: 8));
       final data = response.data;
       if (data is! Map) return null;
       return DictationNextResult.fromRow(Map<String, dynamic>.from(data));
@@ -212,5 +233,92 @@ class DictationRepository {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Traduz a frase do ditado sob demanda via `vocab-enrich`
+  /// (`mode: translation_only`) — mesma edge function usada pela tradução
+  /// de textos da Biblioteca. Usada como fallback quando `prompt_translation`
+  /// não veio preenchido do banco.
+  Future<String?> translatePrompt({
+    required String text,
+    required String language,
+    String targetLocale = 'pt-BR',
+  }) async {
+    try {
+      final response = await supabase.functions
+          .invoke(
+            'vocab-enrich',
+            body: {
+              'surfaceTerm': text,
+              'language': language,
+              'targetTranslationLocale': targetLocale,
+              'mode': 'translation_only',
+              'entryKind': 'sentence',
+            },
+          )
+          .timeout(const Duration(seconds: 8));
+      final data = response.data;
+      if (data is! Map) return null;
+      final translation = (data['translation'] as String? ?? '').trim();
+      return translation.isEmpty ? null : translation;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<List<DictationRecentSession>> fetchRecentSessions({
+    int limit = 3,
+  }) async {
+    final rows = await supabase
+        .from('dictation_attempts')
+        .select('score, created_at, dictation_items(language)')
+        .eq('student_id', _studentId)
+        .order('created_at', ascending: false)
+        .limit(80);
+    final attempts = <({DateTime at, String language, int score})>[];
+    for (final row in (rows as List).cast<Map<String, dynamic>>()) {
+      final created = DateTime.tryParse(row['created_at'] as String? ?? '');
+      if (created == null) continue;
+      final item = row['dictation_items'];
+      final language = item is Map
+          ? (item['language'] as String? ?? 'EN')
+          : 'EN';
+      attempts.add((
+        at: created.toLocal(),
+        language: language,
+        score: row['score'] as int? ?? 0,
+      ));
+    }
+    if (attempts.isEmpty) return const [];
+
+    const gap = Duration(minutes: 25);
+    final sessions = <DictationRecentSession>[];
+    var bucket = <({DateTime at, String language, int score})>[attempts.first];
+    for (var i = 1; i < attempts.length; i++) {
+      final current = attempts[i];
+      final previous = bucket.last;
+      final sameLanguage = current.language == previous.language;
+      final close = previous.at.difference(current.at).abs() <= gap;
+      if (sameLanguage && close) {
+        bucket.add(current);
+      } else {
+        sessions.add(_sessionFromBucket(bucket));
+        if (sessions.length >= limit) return sessions;
+        bucket = [current];
+      }
+    }
+    sessions.add(_sessionFromBucket(bucket));
+    return sessions.take(limit).toList();
+  }
+
+  DictationRecentSession _sessionFromBucket(
+    List<({DateTime at, String language, int score})> bucket,
+  ) {
+    return DictationRecentSession(
+      endedAt: bucket.first.at,
+      language: bucket.first.language,
+      correct: bucket.where((item) => item.score >= 80).length,
+      total: bucket.length,
+    );
   }
 }

@@ -76,6 +76,32 @@ class LibraryRepository {
         .toList();
   }
 
+  Future<LibraryText?> fetchTextById(String id) async {
+    final curated = await supabase
+        .from('texts_library')
+        .select(_textColumns)
+        .eq('id', id)
+        .maybeSingle();
+    if (curated != null) return LibraryText.fromLibraryRow(curated);
+
+    final temporary = await supabase
+        .from('student_temporary_texts')
+        .select(_tempColumns)
+        .eq('id', id)
+        .maybeSingle();
+    if (temporary != null) {
+      return LibraryText.fromTemporaryRow(temporary);
+    }
+
+    final personal = await supabase
+        .from('student_personal_texts')
+        .select(_personalColumns)
+        .eq('id', id)
+        .maybeSingle();
+    if (personal != null) return LibraryText.fromPersonalRow(personal);
+    return null;
+  }
+
   Future<Set<String>> fetchReadTextIds() async {
     final rows = await supabase
         .from('student_text_reads')

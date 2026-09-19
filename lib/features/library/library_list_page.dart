@@ -1,14 +1,40 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_lucide/flutter_lucide.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/session/auth_controller.dart';
+import '../../design_system/components/cards/app_surface.dart';
+import '../../design_system/components/navigation/app_choice_chips.dart';
+import '../../design_system/components/navigation/app_filter_menu.dart';
+import '../../design_system/components/navigation/app_page_header.dart';
+import '../../design_system/components/navigation/app_text_tabs.dart';
+import '../../design_system/theme/app_colors.dart';
+import '../../design_system/theme/app_spacing.dart';
 import '../notebook/notebook_fab.dart';
 import '../vocabulary/models/vocabulary_entry.dart';
+import '../vocabulary/vocabulary_controller.dart';
 import 'library_controller.dart';
 import 'library_repository.dart';
 import 'models/library_text.dart';
 import 'text_reading_page.dart';
 
 enum _LibrarySection { curated, temporary, personal }
+
+const _libraryCardRadius = BorderRadius.all(Radius.circular(16));
+const _libraryBodyPadding = EdgeInsets.fromLTRB(
+  AppSpacing.xl,
+  AppSpacing.sm,
+  AppSpacing.xl,
+  AppSpacing.xxxl,
+);
+const _libraryCardPadding = EdgeInsets.fromLTRB(
+  AppSpacing.xl,
+  AppSpacing.lg,
+  AppSpacing.xl,
+  AppSpacing.lg,
+);
 
 class LibraryListPage extends ConsumerStatefulWidget {
   const LibraryListPage({super.key, this.initialTextId});
@@ -21,52 +47,137 @@ class LibraryListPage extends ConsumerStatefulWidget {
 
 class _LibraryListPageState extends ConsumerState<LibraryListPage> {
   _LibrarySection _section = _LibrarySection.curated;
-  bool _openedInitial = false;
+  String? _openedTextId;
+  String? _languageFilter;
+  String? _cefrFilter;
+  var _didInitLanguage = false;
 
   @override
   void initState() {
     super.initState();
-    if (widget.initialTextId != null) {
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => _openInitialIfReady(),
-      );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initLanguageFilter();
+      final id = widget.initialTextId;
+      if (id != null) unawaited(_openTextById(id));
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant LibraryListPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final id = widget.initialTextId;
+    if (id != null && id != oldWidget.initialTextId) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_openTextById(id));
+      });
     }
   }
 
-  void _openInitialIfReady() {
-    if (_openedInitial || widget.initialTextId == null) return;
-    final data = ref.read(libraryControllerProvider).value;
-    if (data == null) return;
-    final id = widget.initialTextId!;
+  void _initLanguageFilter() {
+    if (_didInitLanguage) return;
+    _didInitLanguage = true;
+    final codes =
+        ref.read(authControllerProvider).value?.studyLanguages ?? const [];
+    if (codes.isEmpty) return;
+    setState(() => _languageFilter = codes.first.toUpperCase());
+  }
+
+  Future<void> _openTextById(String id) async {
+    if (!mounted || _openedTextId == id) return;
+    _openedTextId = id;
     LibraryText? match;
-    for (final text in [
-      ...data.texts,
-      ...data.temporaryTexts,
-      ...data.personalTexts,
-    ]) {
-      if (text.id == id) {
-        match = text;
-        break;
+    final data = ref.read(libraryControllerProvider).value;
+    if (data != null) {
+      for (final text in [
+        ...data.texts,
+        ...data.temporaryTexts,
+        ...data.personalTexts,
+      ]) {
+        if (text.id == id) {
+          match = text;
+          break;
+        }
       }
     }
-    if (match == null) return;
-    _openedInitial = true;
-    if (match.sourceKind == LibraryTextSource.temporary) {
-      _section = _LibrarySection.temporary;
-    } else if (match.sourceKind == LibraryTextSource.personal) {
-      _section = _LibrarySection.personal;
+    match ??= await ref.read(libraryRepositoryProvider).fetchTextById(id);
+    if (!mounted || match == null) {
+      if (mounted && _openedTextId == id) _openedTextId = null;
+      return;
     }
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => TextReadingPage(text: match!)));
+    final opened = match;
+    setState(() {
+      if (opened.sourceKind == LibraryTextSource.temporary) {
+        _section = _LibrarySection.temporary;
+      } else if (opened.sourceKind == LibraryTextSource.personal) {
+        _section = _LibrarySection.personal;
+      }
+    });
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => TextReadingPage(text: opened)),
+    );
+    if (mounted && _openedTextId == id) _openedTextId = null;
   }
 
   List<LibraryText> _textsFor(LibraryState state) {
-    return switch (_section) {
+    final source = switch (_section) {
       _LibrarySection.curated => state.texts,
       _LibrarySection.temporary => state.temporaryTexts,
       _LibrarySection.personal => state.personalTexts,
     };
+    return [
+      for (final text in source)
+        if ((_languageFilter == null ||
+                text.language.toUpperCase() == _languageFilter) &&
+            (_cefrFilter == null || text.cefr == _cefrFilter))
+          text,
+    ];
+  }
+
+  List<String> _languageOptions(LibraryState state) {
+    final study =
+        ref.read(authControllerProvider).value?.studyLanguages ?? const [];
+    final present = <String>{
+      for (final text in [
+        ...state.texts,
+        ...state.temporaryTexts,
+        ...state.personalTexts,
+      ])
+        text.language.toUpperCase(),
+    };
+    final seen = <String>{};
+    final out = <String>[];
+    void add(String code) {
+      final upper = code.toUpperCase();
+      if (upper.isEmpty || seen.contains(upper)) return;
+      seen.add(upper);
+      out.add(upper);
+    }
+
+    for (final code in study) {
+      add(code);
+    }
+    for (final code in present) {
+      add(code);
+    }
+    return out;
+  }
+
+  List<String> _cefrOptions(LibraryState state) {
+    final levels = <String>{
+      for (final text in [
+        ...state.texts,
+        ...state.temporaryTexts,
+        ...state.personalTexts,
+      ])
+        if (text.cefr != null && text.cefr!.trim().isNotEmpty) text.cefr!.trim(),
+    };
+    const order = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
+    return [
+      for (final level in order)
+        if (levels.contains(level)) level,
+      for (final level in levels)
+        if (!order.contains(level)) level,
+    ];
   }
 
   Future<void> _pasteTemporary() async {
@@ -84,134 +195,193 @@ class _LibraryListPageState extends ConsumerState<LibraryListPage> {
   @override
   Widget build(BuildContext context) {
     final stateAsync = ref.watch(libraryControllerProvider);
-    ref.listen(libraryControllerProvider, (_, _) => _openInitialIfReady());
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Biblioteca'),
-        actions: [
-          if (_section == _LibrarySection.temporary)
-            IconButton(
-              icon: const Icon(Icons.content_paste_go_outlined),
-              tooltip: 'Colar texto',
-              onPressed: _pasteTemporary,
-            ),
-        ],
-      ),
+      backgroundColor: Colors.transparent,
+      extendBody: false,
       floatingActionButton: const NotebookFab(),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: SegmentedButton<_LibrarySection>(
-              showSelectedIcon: false,
-              segments: const [
-                ButtonSegment(
-                  value: _LibrarySection.curated,
-                  label: Text('Curada'),
-                ),
-                ButtonSegment(
-                  value: _LibrarySection.temporary,
-                  label: Text('Temp.'),
-                ),
-                ButtonSegment(
-                  value: _LibrarySection.personal,
-                  label: Text('Pessoais'),
-                ),
-              ],
-              selected: {_section},
-              onSelectionChanged: (value) =>
-                  setState(() => _section = value.first),
-            ),
-          ),
-          Expanded(
-            child: stateAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Text(
-                    'Não foi possível carregar a biblioteca.\n$error',
-                    textAlign: TextAlign.center,
-                  ),
-                ),
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            AppPageHeader(
+              title: 'Biblioteca',
+              trailing: _LibraryHeaderButton(
+                icon: LucideIcons.clipboard_paste,
+                tooltip: 'Colar texto',
+                onPressed: _pasteTemporary,
               ),
-              data: (libraryState) {
-                final texts = _textsFor(libraryState);
-                if (texts.isEmpty) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(_emptyMessage, textAlign: TextAlign.center),
-                          if (_section == _LibrarySection.temporary) ...[
-                            const SizedBox(height: 16),
-                            FilledButton.icon(
-                              onPressed: _pasteTemporary,
-                              icon: const Icon(Icons.content_paste_go_outlined),
-                              label: const Text('Colar um texto'),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  );
-                }
-                return ListView.separated(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  itemCount: texts.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemBuilder: (context, index) {
-                    final text = texts[index];
-                    final isRead = libraryState.isRead(text.id);
-                    return ListTile(
-                      title: Text(text.title),
-                      subtitle: Text(
-                        [
-                          taughtLanguages[text.language] ?? text.language,
-                          if (text.cefr != null) text.cefr!,
-                          if (text.sourceKind == LibraryTextSource.temporary &&
-                              text.expiresAt != null)
-                            'expira em ${text.formatExpiresIn()}',
-                        ].join(' · '),
-                      ),
-                      trailing: text.isOwned
-                          ? IconButton(
-                              icon: const Icon(Icons.delete_outline),
-                              tooltip: 'Apagar',
-                              onPressed: () => ref
-                                  .read(libraryControllerProvider.notifier)
-                                  .deleteOwned(text),
-                            )
-                          : IconButton(
-                              icon: Icon(
-                                isRead
-                                    ? Icons.check_circle
-                                    : Icons.check_circle_outline,
+            ),
+            AppTextTabs<_LibrarySection>(
+              selected: _section,
+              onSelected: (value) => setState(() => _section = value),
+              tabs: const [
+                AppTextTab(value: _LibrarySection.curated, label: 'Curada'),
+                AppTextTab(
+                  value: _LibrarySection.temporary,
+                  label: 'Temporárias',
+                ),
+                AppTextTab(value: _LibrarySection.personal, label: 'Pessoais'),
+              ],
+            ),
+            Expanded(
+              child: stateAsync.when(
+                loading: () =>
+                    const Center(child: CircularProgressIndicator()),
+                error: (error, _) => _LibraryEmptyState(
+                  message:
+                      'Não foi possível carregar a biblioteca.\n$error',
+                ),
+                data: (libraryState) {
+                  final texts = _textsFor(libraryState);
+                  final languages = _languageOptions(libraryState);
+                  final cefrs = _cefrOptions(libraryState);
+                  final mine =
+                      ref.watch(vocabularyControllerProvider).value ??
+                      const <VocabularyEntry>[];
+                  final studyLanguages =
+                      ref.watch(authControllerProvider).value?.studyLanguages ??
+                      const <String>[];
+                  final groups = _groupsFor(texts);
+                  final filtered =
+                      _languageFilter != null || _cefrFilter != null;
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          AppSpacing.xl,
+                          AppSpacing.sm,
+                          AppSpacing.xl,
+                          AppSpacing.md,
+                        ),
+                        child: Row(
+                          children: [
+                            if (languages.isNotEmpty)
+                              AppFilterMenu<String?>(
+                                label: 'Idioma',
+                                selected: _languageFilter,
+                                onSelected: (value) => setState(
+                                  () => _languageFilter = value,
+                                ),
+                                options: [
+                                  const AppChoiceOption(
+                                    value: null,
+                                    label: 'Todos',
+                                  ),
+                                  for (final code in languages)
+                                    AppChoiceOption(
+                                      value: code,
+                                      label: taughtLanguages[code] ?? code,
+                                    ),
+                                ],
                               ),
-                              tooltip: isRead
-                                  ? 'Marcar como não lido'
-                                  : 'Marcar como lido',
-                              onPressed: () => ref
-                                  .read(libraryControllerProvider.notifier)
-                                  .toggleRead(text),
-                            ),
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => TextReadingPage(text: text),
+                            const Spacer(),
+                            if (cefrs.isNotEmpty)
+                              AppFilterMenu<String?>(
+                                label: 'Nível',
+                                selected: _cefrFilter,
+                                onSelected: (value) =>
+                                    setState(() => _cefrFilter = value),
+                                options: [
+                                  const AppChoiceOption(
+                                    value: null,
+                                    label: 'Todos',
+                                  ),
+                                  for (final level in cefrs)
+                                    AppChoiceOption(
+                                      value: level,
+                                      label: level,
+                                    ),
+                                ],
+                              ),
+                          ],
                         ),
                       ),
-                    );
-                  },
-                );
-              },
+                      Expanded(
+                        child: texts.isEmpty
+                            ? _LibraryEmptyState(
+                                message: filtered
+                                    ? 'Nenhum texto nesse filtro.'
+                                    : _emptyMessage,
+                                actionLabel:
+                                    _section == _LibrarySection.temporary &&
+                                        !filtered
+                                    ? 'Colar um texto'
+                                    : null,
+                                onAction:
+                                    _section == _LibrarySection.temporary &&
+                                        !filtered
+                                    ? _pasteTemporary
+                                    : null,
+                              )
+                            : ListView.separated(
+                                padding: _libraryBodyPadding,
+                                itemCount: groups.length,
+                                separatorBuilder: (_, _) =>
+                                    const SizedBox(height: AppSpacing.md),
+                                itemBuilder: (context, index) {
+                                  final group = groups[index];
+                                  return _LibraryEntryCard(
+                                    title: group.title,
+                                    subtitle: _subtitleFor(group, mine),
+                                    onTap: () => Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => TextReadingPage(
+                                          text: group.preferred(
+                                            _languageFilter == null
+                                                ? studyLanguages
+                                                : [_languageFilter!],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
+                  );
+                },
+              ),
             ),
-          ),
         ],
       ),
+      ),
     );
+  }
+
+  List<_LibraryGroup> _groupsFor(List<LibraryText> texts) {
+    if (_section != _LibrarySection.curated) {
+      return [for (final text in texts) _LibraryGroup([text])];
+    }
+    final byTitle = <String, List<LibraryText>>{};
+    for (final text in texts) {
+      byTitle.putIfAbsent(text.title.trim().toLowerCase(), () => []).add(text);
+    }
+    return [for (final versions in byTitle.values) _LibraryGroup(versions)];
+  }
+
+  String _subtitleFor(_LibraryGroup group, List<VocabularyEntry> mine) {
+    final languageCount = group.languageCount;
+    final inList = group.inListCount(mine);
+    final languageLabel = languageCount == 1
+        ? (taughtLanguages[group.versions.first.language] ??
+              group.versions.first.language)
+        : '$languageCount idiomas';
+    final parts = <String>[
+      languageLabel,
+      if (group.cefr != null) group.cefr!,
+      '$inList na sua lista',
+    ];
+    final first = group.versions.first;
+    if (first.sourceKind == LibraryTextSource.temporary &&
+        first.expiresAt != null) {
+      parts.add('expira em ${first.formatExpiresIn()}');
+    }
+    return parts.join(' · ');
   }
 
   String get _emptyMessage {
@@ -222,6 +392,175 @@ class _LibraryListPageState extends ConsumerState<LibraryListPage> {
       _LibrarySection.personal =>
         'Nenhum texto pessoal ainda. Salve um temporário pra guardar.',
     };
+  }
+}
+
+class _LibraryHeaderButton extends StatelessWidget {
+  const _LibraryHeaderButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: AppColors.background,
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onPressed,
+          child: Ink(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Icon(icon, size: 18, color: AppColors.heading),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LibraryEmptyState extends StatelessWidget {
+  const _LibraryEmptyState({
+    required this.message,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  final String message;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: _libraryBodyPadding,
+      children: [
+        AppSurface(
+          borderRadius: _libraryCardRadius,
+          padding: _libraryCardPadding,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(message, style: Theme.of(context).textTheme.bodyMedium),
+              if (actionLabel != null && onAction != null) ...[
+                const SizedBox(height: AppSpacing.lg),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: onAction,
+                    child: Text(actionLabel!),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _LibraryGroup {
+  const _LibraryGroup(this.versions);
+
+  final List<LibraryText> versions;
+
+  String get title => versions.first.title;
+
+  int get languageCount => versions.map((text) => text.language).toSet().length;
+
+  String? get cefr {
+    final values = versions.map((text) => text.cefr).whereType<String>().toSet();
+    if (values.isEmpty) return null;
+    if (values.length == 1) return values.first;
+    return versions.first.cefr;
+  }
+
+  LibraryText preferred(List<String> studyLanguages) {
+    for (final language in studyLanguages) {
+      for (final text in versions) {
+        if (text.language == language) return text;
+      }
+    }
+    return versions.first;
+  }
+
+  int inListCount(List<VocabularyEntry> mine) {
+    if (mine.isEmpty) return 0;
+    var count = 0;
+    for (final word in mine) {
+      final term = word.term.trim().toLowerCase();
+      if (term.isEmpty) continue;
+      for (final text in versions) {
+        if (word.language != text.language) continue;
+        if (text.content.toLowerCase().contains(term)) {
+          count++;
+          break;
+        }
+      }
+    }
+    return count;
+  }
+}
+
+class _LibraryEntryCard extends StatelessWidget {
+  const _LibraryEntryCard({
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppSurface(
+      onTap: onTap,
+      borderRadius: _libraryCardRadius,
+      padding: _libraryCardPadding,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          const Padding(
+            padding: EdgeInsets.only(top: 2),
+            child: Icon(
+              LucideIcons.chevron_right,
+              color: AppColors.foreground,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

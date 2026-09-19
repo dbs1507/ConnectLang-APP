@@ -20,6 +20,7 @@ import '../features/subscription/subscription_status_page.dart';
 import '../features/vocabulary/vocabulary_list_page.dart';
 import 'home_shell.dart';
 import 'learner_routes.dart';
+import '../features/home/subscriber_tab_shell.dart';
 
 /// Espelha `homeForRole`/`RequireRole`/`RequireActiveSubscription` de
 /// `src/App.tsx`, com as mesmas rotas `/estudo/...` e `/aluno/...` do site.
@@ -57,27 +58,85 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const StudentHomePage(),
         routes: _learnerFeatureRoutes(),
       ),
-      GoRoute(
-        path: LearnerPaths.subscriberHome,
-        builder: (context, state) => const SubscriberHomePage(),
-        routes: [
-          GoRoute(
-            path: 'perfil',
-            builder: (context, state) => const SubscriberProfilePage(),
+      StatefulShellRoute.indexedStack(
+        builder: (context, state, navigationShell) =>
+            SubscriberTabShell(navigationShell: navigationShell),
+        branches: [
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: LearnerPaths.subscriberHome,
+                builder: (context, state) => const SubscriberHomePage(),
+                routes: [
+                  GoRoute(
+                    path: 'assistente',
+                    builder: (context, state) => StudyCoachHomePage(
+                      initialLanguage: state.uri.queryParameters['lang'],
+                    ),
+                  ),
+                  GoRoute(
+                    path: 'producao-demanda/:id',
+                    builder: (context, state) => ProductionDemandPage(
+                      assignmentId: state.pathParameters['id'] ?? '',
+                    ),
+                  ),
+                  GoRoute(
+                    path: 'caderno',
+                    builder: (context, state) => NotebookListPage(
+                      showAiOnly: state.uri.queryParameters['tab'] == 'ai',
+                    ),
+                  ),
+                  GoRoute(
+                    path: 'nivelamento',
+                    builder: (context, state) => const PlacementHomePage(),
+                  ),
+                  GoRoute(
+                    path: 'nivelamento/:lang',
+                    builder: (context, state) => PlacementHomePage(
+                      initialLanguage: state.pathParameters['lang'],
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
-          GoRoute(
-            path: 'assistente',
-            builder: (context, state) => StudyCoachHomePage(
-              initialLanguage: state.uri.queryParameters['lang'],
-            ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/estudo/vocabulario',
+                builder: (context, state) => const VocabularyListPage(),
+              ),
+            ],
           ),
-          GoRoute(
-            path: 'producao-demanda/:id',
-            builder: (context, state) => ProductionDemandPage(
-              assignmentId: state.pathParameters['id'] ?? '',
-            ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/estudo/biblioteca',
+                builder: (context, state) => LibraryListPage(
+                  initialTextId: state.uri.queryParameters['text_id'],
+                ),
+              ),
+            ],
           ),
-          ..._learnerFeatureRoutes(),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/estudo/ditado',
+                builder: (context, state) => DictationHomePage.fromRoute(
+                  locationWithQuery(state.uri),
+                  fallbackLanguage: state.uri.queryParameters['lang'] ?? 'EN',
+                ),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/estudo/perfil',
+                builder: (context, state) => const SubscriberProfilePage(),
+              ),
+            ],
+          ),
         ],
       ),
     ],

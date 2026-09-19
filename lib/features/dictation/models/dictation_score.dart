@@ -454,13 +454,14 @@ DictationGradingResult mergeDictationGrades(
   }
 
   // Preferir notas locais de typo quando a IA não detalhou o minor.
-  final mergedMistakes =
+  final seedMistakes =
       localMinor > 0 && mistakes.every((m) => m.severity != 'minor')
       ? [...mistakes, ...local.mistakes.where((m) => m.severity == 'minor')]
       : [
           for (final m in mistakes)
             if (m.note != null) m else _withLocalTwinNote(m, local),
         ];
+  final mergedMistakes = _ensureConcreteMistakes(seedMistakes, local);
 
   return DictationGradingResult(
     score: score,
@@ -489,4 +490,50 @@ DictationMistake _withLocalTwinNote(
     }
   }
   return m;
+}
+
+/// Preenche expected/answer a partir da correção local quando a IA só
+/// devolve um rótulo genérico ("Pronome incorreto").
+List<DictationMistake> _ensureConcreteMistakes(
+  List<DictationMistake> ai,
+  DictationScoreResult local,
+) {
+  final unused = [...local.mistakes];
+  final filled = <DictationMistake>[];
+  for (final m in ai) {
+    if (m.expected.isNotEmpty || m.answer.isNotEmpty) {
+      filled.add(m);
+      unused.removeWhere(
+        (lm) => lm.expected == m.expected && lm.answer == m.answer,
+      );
+      continue;
+    }
+    DictationMistake? twin;
+    for (final lm in unused) {
+      if (lm.index == m.index) {
+        twin = lm;
+        break;
+      }
+    }
+    twin ??= unused.isNotEmpty ? unused.first : null;
+    if (twin != null) {
+      unused.remove(twin);
+      filled.add(
+        DictationMistake(
+          expected: twin.expected,
+          answer: twin.answer,
+          index: m.index,
+          severity: m.severity,
+          note: m.note ?? twin.note,
+        ),
+      );
+    } else {
+      filled.add(m);
+    }
+  }
+  if (filled.every((m) => m.expected.isEmpty && m.answer.isEmpty) &&
+      local.mistakes.isNotEmpty) {
+    return local.mistakes;
+  }
+  return filled;
 }

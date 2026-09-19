@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_lucide/flutter_lucide.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/session/auth_controller.dart';
@@ -127,7 +128,7 @@ class _SubscriptionCard extends StatelessWidget {
                   const SizedBox(height: 16),
                   Row(
                     children: [
-                      const Icon(Icons.calendar_today_outlined, size: 18),
+                      const Icon(LucideIcons.calendar, size: 18),
                       const SizedBox(width: 8),
                       Text('$chargeLabel: ${_formatDate(chargeDate)}'),
                     ],

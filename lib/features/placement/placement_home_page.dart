@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_lucide/flutter_lucide.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/session/app_role.dart';
@@ -141,7 +142,7 @@ class _PlacementHomePageState extends ConsumerState<PlacementHomePage> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Icon(
-                Icons.school_outlined,
+                LucideIcons.graduation_cap,
                 size: 48,
                 color: Theme.of(context).colorScheme.primary,
               ),

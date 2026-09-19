@@ -1,12 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_lucide/flutter_lucide.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../design_system/components/cards/app_surface.dart';
+import '../../design_system/components/navigation/app_choice_chips.dart';
+import '../../design_system/components/navigation/app_filter_menu.dart';
+import '../../design_system/components/navigation/app_page_header.dart';
+import '../../design_system/components/navigation/app_text_tabs.dart';
+import '../../design_system/theme/app_colors.dart';
+import '../../design_system/theme/app_spacing.dart';
+import '../../design_system/theme/app_typography.dart';
 import '../notebook/models/notebook_entry.dart';
 import '../notebook/notebook_controller.dart';
 import '../notebook/notebook_fab.dart';
 import 'flashcard_practice_page.dart';
 import 'models/base_vocabulary_entry.dart';
-import 'models/srs_schedule.dart';
 import 'models/vocab_category.dart';
 import 'models/vocab_explain_result.dart';
 import 'models/vocabulary_entry.dart';
@@ -15,6 +23,15 @@ import 'vocabulary_repository.dart';
 import 'vocab_tts_button.dart';
 
 enum _VocabSection { mine, base, archived }
+
+const _vocabCardRadius = BorderRadius.all(Radius.circular(16));
+const _vocabCardPadding = EdgeInsets.fromLTRB(
+  AppSpacing.xl,
+  AppSpacing.lg,
+  AppSpacing.xl,
+  AppSpacing.lg,
+);
+const _smallListThreshold = 8;
 
 class VocabularyListPage extends ConsumerStatefulWidget {
   const VocabularyListPage({super.key});
@@ -25,59 +42,247 @@ class VocabularyListPage extends ConsumerStatefulWidget {
 
 class _VocabularyListPageState extends ConsumerState<VocabularyListPage> {
   _VocabSection _section = _VocabSection.mine;
+  bool _addWordSheetOpen = false;
+
+  Future<void> _openAddWordSheet() async {
+    setState(() => _addWordSheetOpen = true);
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        useSafeArea: true,
+        builder: (_) => const _AddWordSheet(),
+      );
+    } finally {
+      if (mounted) setState(() => _addWordSheetOpen = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      floatingActionButton: const NotebookFab(),
-      appBar: AppBar(
-        title: const Text('Vocabulário'),
-        actions: [
-          if (_section == _VocabSection.mine)
-            IconButton(
-              icon: const Icon(Icons.add),
-              tooltip: 'Adicionar palavra',
-              onPressed: () => showModalBottomSheet(
-                context: context,
-                isScrollControlled: true,
-                builder: (_) => const _AddWordSheet(),
-              ),
+      backgroundColor: Colors.transparent,
+      extendBody: false,
+      floatingActionButton: _addWordSheetOpen ? null : const NotebookFab(),
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            AppPageHeader(
+              title: 'Vocabulário',
+              trailing: _AddWordButton(onPressed: _openAddWordSheet),
             ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: SegmentedButton<_VocabSection>(
-              segments: const [
-                ButtonSegment(
-                  value: _VocabSection.mine,
-                  label: Text('Minhas'),
-                  icon: Icon(Icons.style_outlined),
-                ),
-                ButtonSegment(
-                  value: _VocabSection.base,
-                  label: Text('Base'),
-                  icon: Icon(Icons.menu_book_outlined),
-                ),
-                ButtonSegment(
+            AppTextTabs<_VocabSection>(
+              selected: _section,
+              onSelected: (value) => setState(() => _section = value),
+              tabs: const [
+                AppTextTab(value: _VocabSection.mine, label: 'Minhas'),
+                AppTextTab(value: _VocabSection.base, label: 'Padrão'),
+                AppTextTab(
                   value: _VocabSection.archived,
-                  label: Text('Arquivadas'),
-                  icon: Icon(Icons.inventory_2_outlined),
+                  label: 'Arquivadas',
                 ),
               ],
-              selected: {_section},
-              onSelectionChanged: (value) =>
-                  setState(() => _section = value.first),
+            ),
+            Expanded(
+              child: switch (_section) {
+                _VocabSection.mine => _MineSection(
+                  onExploreBase: () =>
+                      setState(() => _section = _VocabSection.base),
+                ),
+                _VocabSection.base => const _BaseSection(),
+                _VocabSection.archived => const _ArchivedSection(),
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AddWordButton extends StatelessWidget {
+  const _AddWordButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Adicionar palavra',
+      child: Material(
+        color: AppColors.background,
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onPressed,
+          child: Ink(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: AppColors.border),
+            ),
+            child: const Icon(
+              LucideIcons.plus,
+              size: 20,
+              color: AppColors.heading,
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PracticeCard extends StatelessWidget {
+  const _PracticeCard({
+    required this.dueCount,
+    required this.onPractice,
+  });
+
+  final int dueCount;
+  final VoidCallback onPractice;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Material(
+      color: AppColors.heading,
+      borderRadius: _vocabCardRadius,
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              dueCount > 0 ? 'Pra revisar' : 'Em dia',
+              style: AppTypography.microLabel.copyWith(
+                color: AppColors.primarySoft,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Text(
+              dueCount > 0
+                  ? '$dueCount palavra${dueCount == 1 ? '' : 's'} pra hoje'
+                  : 'Tudo revisado — praticar de novo?',
+              style: textTheme.headlineSmall?.copyWith(
+                color: Colors.white,
+                height: 1.35,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Text(
+              dueCount > 0
+                  ? 'Passaram da hora. Uma revisão rápida agora segura o que você já aprendeu.'
+                  : 'Nada pendente hoje. Se quiser, dá pra reforçar o que já está no caderno.',
+              style: textTheme.bodySmall?.copyWith(
+                color: Colors.white.withValues(alpha: 0.72),
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            FilledButton(
+              onPressed: onPractice,
+              child: const Text('Praticar'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _VocabTermRow extends StatelessWidget {
+  const _VocabTermRow({
+    required this.term,
+    required this.subtitle,
+    required this.trailing,
+    this.due = false,
+  });
+
+  final String term;
+  final String subtitle;
+  final Widget trailing;
+  final bool due;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
           Expanded(
-            child: switch (_section) {
-              _VocabSection.mine => const _MineSection(),
-              _VocabSection.base => const _BaseSection(),
-              _VocabSection.archived => const _ArchivedSection(),
-            },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(term, style: Theme.of(context).textTheme.headlineSmall),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    if (due) ...[
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: const BoxDecoration(
+                          color: AppColors.terracotta,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    Flexible(
+                      child: Text(
+                        subtitle,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          IconTheme(
+            data: const IconThemeData(color: AppColors.foreground, size: 20),
+            child: trailing,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LibrarySuggestionCard extends StatelessWidget {
+  const _LibrarySuggestionCard({
+    required this.body,
+    required this.onExplore,
+  });
+
+  final String body;
+  final VoidCallback onExplore;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppSurface(
+      borderRadius: _vocabCardRadius,
+      padding: _vocabCardPadding,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Biblioteca padrão', style: Theme.of(context).textTheme.headlineSmall),
+          const SizedBox(height: AppSpacing.sm),
+          Text(body, style: Theme.of(context).textTheme.bodyMedium),
+          const SizedBox(height: AppSpacing.lg),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: onExplore,
+              child: const Text('Explorar'),
+            ),
           ),
         ],
       ),
@@ -86,7 +291,9 @@ class _VocabularyListPageState extends ConsumerState<VocabularyListPage> {
 }
 
 class _MineSection extends ConsumerWidget {
-  const _MineSection();
+  const _MineSection({required this.onExploreBase});
+
+  final VoidCallback onExploreBase;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -102,15 +309,17 @@ class _MineSection extends ConsumerWidget {
           ),
         ),
       ),
-      data: (entries) => _MineListBody(entries: entries),
+      data: (entries) =>
+          _MineListBody(entries: entries, onExploreBase: onExploreBase),
     );
   }
 }
 
 class _MineListBody extends ConsumerStatefulWidget {
-  const _MineListBody({required this.entries});
+  const _MineListBody({required this.entries, required this.onExploreBase});
 
   final List<VocabularyEntry> entries;
+  final VoidCallback onExploreBase;
 
   @override
   ConsumerState<_MineListBody> createState() => _MineListBodyState();
@@ -125,7 +334,6 @@ class _MineListBodyState extends ConsumerState<_MineListBody> {
     final categories =
         ref.watch(vocabularyCategoriesProvider).value ??
         const <VocabCategory>[];
-    final categoryNameById = {for (final c in categories) c.id: c.name};
     final categoryFiltered = _categoryFilter == null
         ? widget.entries
         : widget.entries
@@ -136,185 +344,174 @@ class _MineListBodyState extends ConsumerState<_MineListBody> {
         : categoryFiltered.where((e) => e.entryKind == _kindFilter).toList();
 
     if (widget.entries.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.style_outlined,
-                size: 48,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Você ainda não tem palavras. Toque em "+" para adicionar a primeira.',
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.xl,
+          AppSpacing.sm,
+          AppSpacing.xl,
+          AppSpacing.xxxl,
         ),
+        children: [
+          AppSurface(
+            borderRadius: _vocabCardRadius,
+            padding: _vocabCardPadding,
+            child: Text(
+              'Você ainda não tem palavras. Toque em + para adicionar a primeira.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          _LibrarySuggestionCard(
+            body: _librarySuggestionBody(categories),
+            onExplore: widget.onExploreBase,
+          ),
+        ],
       );
     }
 
     final dueCount = widget.entries.where((e) => e.isDue).length;
 
-    return Column(
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.xl,
+        0,
+        AppSpacing.xl,
+        AppSpacing.xxxl,
+      ),
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  dueCount > 0
-                      ? '$dueCount palavra(s) pra revisar hoje'
-                      : 'Tudo revisado — praticar de novo?',
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-              ),
-              FilledButton.icon(
-                icon: const Icon(Icons.style),
-                label: const Text('Praticar'),
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) =>
-                        FlashcardPracticePage(kindFilter: _kindFilter),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: SegmentedButton<VocabEntryKind?>(
-            showSelectedIcon: false,
-            segments: const [
-              ButtonSegment(value: null, label: Text('Todas')),
-              ButtonSegment(
-                value: VocabEntryKind.word,
-                label: Text('Palavras'),
-              ),
-              ButtonSegment(
-                value: VocabEntryKind.sentence,
-                label: Text('Frases'),
-              ),
-            ],
-            selected: {_kindFilter},
-            onSelectionChanged: (value) =>
-                setState(() => _kindFilter = value.first),
-          ),
-        ),
-        if (categories.isNotEmpty)
-          SizedBox(
-            height: 44,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: FilterChip(
-                    label: const Text('Todas'),
-                    selected: _categoryFilter == null,
-                    onSelected: (_) => setState(() => _categoryFilter = null),
-                  ),
-                ),
-                for (final category in categories)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: FilterChip(
-                      label: Text(category.name),
-                      selected: _categoryFilter == category.id,
-                      onSelected: (selected) => setState(
-                        () => _categoryFilter = selected ? category.id : null,
-                      ),
-                    ),
-                  ),
-              ],
+        _PracticeCard(
+          dueCount: dueCount,
+          onPractice: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => FlashcardPracticePage(kindFilter: _kindFilter),
             ),
           ),
-        Expanded(
-          child: filtered.isEmpty
-              ? Center(
-                  child: Text(
-                    _kindFilter == VocabEntryKind.sentence
-                        ? 'Nenhuma frase nessa seleção.'
-                        : 'Nenhuma palavra nessa seleção.',
-                  ),
-                )
-              : ListView.separated(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  itemCount: filtered.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemBuilder: (context, index) {
-                    final entry = filtered[index];
-                    final entryCategoryNames = entry.categoryIds
-                        .map((id) => categoryNameById[id])
-                        .whereType<String>()
-                        .toList();
-                    return ListTile(
-                      title: Row(
-                        children: [
-                          Flexible(child: Text(entry.term)),
-                          if (entry.entryKind == VocabEntryKind.sentence) ...[
-                            const SizedBox(width: 6),
-                            const Chip(
-                              label: Text('Frase'),
-                              visualDensity: VisualDensity.compact,
-                              materialTapTargetSize:
-                                  MaterialTapTargetSize.shrinkWrap,
-                            ),
-                          ],
-                          if (entry.partOfSpeech != null) ...[
-                            const SizedBox(width: 6),
-                            Text(
-                              '(${entry.partOfSpeech})',
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(fontStyle: FontStyle.italic),
-                            ),
-                          ],
-                        ],
-                      ),
-                      subtitle: Text(
-                        '${entry.translation} · ${taughtLanguages[entry.language] ?? entry.language} · '
-                        '${entry.isDue ? "pronta pra revisar" : formatSrsIntervalLabel(entry.intervalMinutes)}'
-                        '${entryCategoryNames.isNotEmpty ? " · ${entryCategoryNames.join(', ')}" : ""}',
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          VocabTtsButton(
-                            text: entry.term,
-                            language: entry.language,
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.auto_awesome_outlined),
-                            tooltip: 'Explicar com IA',
-                            onPressed: () =>
-                                _openExplainSheet(context, ref, entry),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete_outline),
-                            tooltip: 'Tirar da lista',
-                            onPressed: () => ref
-                                .read(vocabularyControllerProvider.notifier)
-                                .archive(entry.id),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
         ),
+        const SizedBox(height: AppSpacing.xl),
+        Row(
+          children: [
+            AppFilterMenu<VocabEntryKind?>(
+              label: 'Tipo',
+              selected: _kindFilter,
+              onSelected: (value) => setState(() => _kindFilter = value),
+              options: const [
+                AppChoiceOption(value: null, label: 'Todas'),
+                AppChoiceOption(value: VocabEntryKind.word, label: 'Palavras'),
+                AppChoiceOption(
+                  value: VocabEntryKind.sentence,
+                  label: 'Frases',
+                ),
+              ],
+            ),
+            const Spacer(),
+            if (categories.isNotEmpty)
+              AppFilterMenu<String?>(
+                label: 'Categoria',
+                selected: _categoryFilter,
+                onSelected: (value) => setState(() => _categoryFilter = value),
+                options: [
+                  const AppChoiceOption(value: null, label: 'Todas'),
+                  for (final category in categories)
+                    AppChoiceOption(value: category.id, label: category.name),
+                ],
+              ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.md),
+        if (filtered.isEmpty)
+          AppSurface(
+            borderRadius: _vocabCardRadius,
+            padding: _vocabCardPadding,
+            child: Text(
+              _kindFilter == VocabEntryKind.sentence
+                  ? 'Nenhuma frase nessa seleção.'
+                  : 'Nenhuma palavra nessa seleção.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          )
+        else
+          for (final entry in filtered) ...[
+            AppSurface(
+              borderRadius: _vocabCardRadius,
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.xl,
+                AppSpacing.md,
+                AppSpacing.md,
+                AppSpacing.md,
+              ),
+              child: _mineWordRow(entry),
+            ),
+            const SizedBox(height: AppSpacing.md),
+          ],
+        if (widget.entries.length < _smallListThreshold) ...[
+          const SizedBox(height: AppSpacing.lg),
+          _LibrarySuggestionCard(
+            body: _librarySuggestionBody(categories),
+            onExplore: widget.onExploreBase,
+          ),
+        ],
       ],
     );
   }
+
+  Widget _mineWordRow(VocabularyEntry entry) {
+    return _VocabTermRow(
+      term: entry.term,
+      due: entry.isDue,
+      subtitle:
+          '${entry.translation} · ${taughtLanguages[entry.language] ?? entry.language}',
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          VocabTtsButton(text: entry.term, language: entry.language),
+          PopupMenuButton<String>(
+            icon: const Icon(LucideIcons.ellipsis),
+            onSelected: (value) {
+              if (value == 'explain') {
+                _openExplainSheet(context, ref, entry);
+              } else if (value == 'archive') {
+                ref.read(vocabularyControllerProvider.notifier).archive(entry.id);
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: 'explain',
+                child: Text('Explicar com IA'),
+              ),
+              PopupMenuItem(
+                value: 'archive',
+                child: Text('Tirar da lista'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _librarySuggestionBody(List<VocabCategory> categories) {
+  const preferred = ['Viagem', 'Trabalho'];
+  final available = [
+    for (final category in categories)
+      if (category.name.trim().isNotEmpty) category.name.trim(),
+  ];
+  final names = <String>[
+    for (final name in preferred)
+      if (available.any((item) => item.toLowerCase() == name.toLowerCase()))
+        available.firstWhere((item) => item.toLowerCase() == name.toLowerCase()),
+  ];
+  for (final name in available) {
+    if (names.length >= 2) break;
+    if (!names.contains(name)) names.add(name);
+  }
+  if (names.length >= 2) {
+    return 'Sua lista está pequena. Que tal adicionar palavras de "${names[0]}" ou "${names[1]}" pra praticar mais?';
+  }
+  if (names.length == 1) {
+    return 'Sua lista está pequena. Que tal adicionar palavras de "${names[0]}" pra praticar mais?';
+  }
+  return 'Sua lista está pequena. Que tal adicionar palavras da biblioteca padrão pra praticar mais?';
 }
 
 class _ArchivedSection extends ConsumerWidget {
@@ -336,35 +533,57 @@ class _ArchivedSection extends ConsumerWidget {
       ),
       data: (entries) {
         if (entries.isEmpty) {
-          return const Center(
-            child: Padding(
-              padding: EdgeInsets.all(24),
-              child: Text(
-                'Nenhuma palavra arquivada. Quando você tira uma da lista, ela aparece aqui pra recuperar.',
-                textAlign: TextAlign.center,
-              ),
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.xl,
+              AppSpacing.sm,
+              AppSpacing.xl,
+              AppSpacing.xxxl,
             ),
+            children: [
+              AppSurface(
+                borderRadius: _vocabCardRadius,
+                padding: _vocabCardPadding,
+                child: Text(
+                  'Nenhuma palavra arquivada. Quando você tira uma da lista, ela aparece aqui pra recuperar.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ),
+            ],
           );
         }
-        return ListView.separated(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          itemCount: entries.length,
-          separatorBuilder: (_, _) => const Divider(height: 1),
-          itemBuilder: (context, index) {
-            final entry = entries[index];
-            return ListTile(
-              title: Text(entry.term),
-              subtitle: Text(
-                '${entry.translation} · ${taughtLanguages[entry.language] ?? entry.language}',
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.xl,
+            AppSpacing.sm,
+            AppSpacing.xl,
+            AppSpacing.xxxl,
+          ),
+          children: [
+            for (final entry in entries) ...[
+              AppSurface(
+                borderRadius: _vocabCardRadius,
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.xl,
+                  AppSpacing.md,
+                  AppSpacing.md,
+                  AppSpacing.md,
+                ),
+                child: _VocabTermRow(
+                  term: entry.term,
+                  subtitle:
+                      '${entry.translation} · ${taughtLanguages[entry.language] ?? entry.language}',
+                  trailing: TextButton(
+                    onPressed: () => ref
+                        .read(archivedVocabularyControllerProvider.notifier)
+                        .restore(entry.id),
+                    child: const Text('Restaurar'),
+                  ),
+                ),
               ),
-              trailing: TextButton(
-                onPressed: () => ref
-                    .read(archivedVocabularyControllerProvider.notifier)
-                    .restore(entry.id),
-                child: const Text('Restaurar'),
-              ),
-            );
-          },
+              const SizedBox(height: AppSpacing.md),
+            ],
+          ],
         );
       },
     );
@@ -400,61 +619,49 @@ class _BaseSectionState extends ConsumerState<_BaseSection> {
     final categories =
         ref.watch(vocabularyCategoriesProvider).value ??
         const <VocabCategory>[];
-    final categoryNameById = {for (final c in categories) c.id: c.name};
 
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-          child: DropdownButtonFormField<String>(
-            key: ValueKey(_language),
-            initialValue: _language,
-            decoration: const InputDecoration(
-              labelText: 'Idioma',
-              isDense: true,
-            ),
-            items: [
-              for (final entry in taughtLanguages.entries)
-                DropdownMenuItem(value: entry.key, child: Text(entry.value)),
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.xl,
+            AppSpacing.sm,
+            AppSpacing.xl,
+            AppSpacing.lg,
+          ),
+          child: Row(
+            children: [
+              AppFilterMenu<String>(
+                label: 'Idioma',
+                selected: _language,
+                onSelected: (value) => setState(() {
+                  _language = value;
+                  _categoryFilter = null;
+                }),
+                options: [
+                  for (final entry in taughtLanguages.entries)
+                    AppChoiceOption(value: entry.key, label: entry.value),
+                ],
+              ),
+              const Spacer(),
+              if (categories.isNotEmpty)
+                AppFilterMenu<String?>(
+                  label: 'Categoria',
+                  selected: _categoryFilter,
+                  onSelected: (value) =>
+                      setState(() => _categoryFilter = value),
+                  options: [
+                    const AppChoiceOption(value: null, label: 'Todas'),
+                    for (final category in categories)
+                      AppChoiceOption(
+                        value: category.id,
+                        label: category.name,
+                      ),
+                  ],
+                ),
             ],
-            onChanged: (value) {
-              if (value == null) return;
-              setState(() {
-                _language = value;
-                _categoryFilter = null;
-              });
-            },
           ),
         ),
-        if (categories.isNotEmpty)
-          SizedBox(
-            height: 44,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: FilterChip(
-                    label: const Text('Todas'),
-                    selected: _categoryFilter == null,
-                    onSelected: (_) => setState(() => _categoryFilter = null),
-                  ),
-                ),
-                for (final category in categories)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: FilterChip(
-                      label: Text(category.name),
-                      selected: _categoryFilter == category.id,
-                      onSelected: (selected) => setState(
-                        () => _categoryFilter = selected ? category.id : null,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
         Expanded(
           child: baseAsync.when(
             loading: () => const Center(child: CircularProgressIndicator()),
@@ -474,52 +681,80 @@ class _BaseSectionState extends ConsumerState<_BaseSection> {
                         .where((e) => e.categoryIds.contains(_categoryFilter))
                         .toList();
               if (filtered.isEmpty) {
-                return const Center(
-                  child: Text('Nenhuma palavra base nesse filtro.'),
+                return ListView(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.xl,
+                    0,
+                    AppSpacing.xl,
+                    AppSpacing.xxxl,
+                  ),
+                  children: [
+                    AppSurface(
+                      borderRadius: _vocabCardRadius,
+                      padding: _vocabCardPadding,
+                      child: Text(
+                        'Nenhuma palavra base nesse filtro.',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ),
+                  ],
                 );
               }
               return ListView.separated(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.xl,
+                  0,
+                  AppSpacing.xl,
+                  AppSpacing.xxxl,
                 ),
                 itemCount: filtered.length,
-                separatorBuilder: (_, _) => const Divider(height: 1),
+                separatorBuilder: (_, _) =>
+                    const SizedBox(height: AppSpacing.md),
                 itemBuilder: (context, index) {
                   final entry = filtered[index];
                   final alreadyInMine =
                       savedBaseIds.contains(entry.id) ||
                       mineTerms.contains(entry.term.trim().toLowerCase());
-                  final names = entry.categoryIds
-                      .map((id) => categoryNameById[id])
-                      .whereType<String>()
-                      .toList();
-                  return ListTile(
-                    title: Text(entry.term),
-                    subtitle: Text(
-                      [
+                  return AppSurface(
+                    borderRadius: _vocabCardRadius,
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.xl,
+                      AppSpacing.md,
+                      AppSpacing.md,
+                      AppSpacing.md,
+                    ),
+                    child: _VocabTermRow(
+                      term: entry.term,
+                      subtitle: [
                         entry.translation,
                         if (entry.cefr.isNotEmpty) entry.cefr,
-                        if (names.isNotEmpty) names.join(', '),
                       ].join(' · '),
+                      trailing: alreadyInMine
+                          ? Padding(
+                              padding: const EdgeInsets.only(
+                                right: AppSpacing.sm,
+                              ),
+                              child: Text(
+                                'Na lista',
+                                style: Theme.of(context).textTheme.labelMedium,
+                              ),
+                            )
+                          : IconButton(
+                              icon: _addingId == entry.id
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(LucideIcons.plus),
+                              tooltip: 'Adicionar às minhas',
+                              onPressed: _addingId != null
+                                  ? null
+                                  : () => _add(entry),
+                            ),
                     ),
-                    trailing: alreadyInMine
-                        ? const Text('Na lista')
-                        : IconButton(
-                            icon: _addingId == entry.id
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Icon(Icons.add),
-                            tooltip: 'Adicionar às minhas',
-                            onPressed: _addingId != null
-                                ? null
-                                : () => _add(entry),
-                          ),
                   );
                 },
               );
@@ -720,7 +955,7 @@ class _ExplainSheetState extends ConsumerState<_ExplainSheet> {
                           height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Icon(Icons.edit_note),
+                      : const Icon(LucideIcons.notebook_pen),
                   label: const Text('Salvar no caderno'),
                 ),
               ],
@@ -852,27 +1087,35 @@ class _AddWordSheetState extends ConsumerState<_AddWordSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                _entryKind == VocabEntryKind.sentence
-                    ? 'Nova frase'
-                    : 'Nova palavra',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 16),
-              SegmentedButton<VocabEntryKind>(
-                segments: const [
-                  ButtonSegment(
-                    value: VocabEntryKind.word,
-                    label: Text('Palavra'),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _entryKind == VocabEntryKind.sentence
+                          ? 'Nova frase'
+                          : 'Nova palavra',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
                   ),
-                  ButtonSegment(
-                    value: VocabEntryKind.sentence,
-                    label: Text('Frase'),
+                  IconButton(
+                    icon: const Icon(LucideIcons.x),
+                    tooltip: 'Fechar',
+                    onPressed: _submitting
+                        ? null
+                        : () => Navigator.of(context).pop(),
                   ),
                 ],
-                selected: {_entryKind},
-                onSelectionChanged: (value) =>
-                    setState(() => _entryKind = value.first),
+              ),
+              const SizedBox(height: 16),
+              AppTextTabs<VocabEntryKind>(
+                selected: _entryKind,
+                compact: true,
+                padding: EdgeInsets.zero,
+                onSelected: (value) => setState(() => _entryKind = value),
+                tabs: const [
+                  AppTextTab(value: VocabEntryKind.word, label: 'Palavra'),
+                  AppTextTab(value: VocabEntryKind.sentence, label: 'Frase'),
+                ],
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
@@ -911,7 +1154,7 @@ class _AddWordSheetState extends ConsumerState<_AddWordSheet> {
                         height: 16,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Icon(Icons.auto_awesome, size: 18),
+                    : const Icon(LucideIcons.astroid, size: 18),
                 label: const Text('Preencher com IA'),
               ),
               const SizedBox(height: 12),
@@ -945,7 +1188,14 @@ class _AddWordSheetState extends ConsumerState<_AddWordSheet> {
                   children: [
                     for (final category in categories)
                       FilterChip(
-                        label: Text(category.name),
+                        label: Text(
+                          category.name,
+                          style: TextStyle(
+                            color: _selectedCategoryIds.contains(category.id)
+                                ? Colors.white
+                                : AppColors.foreground,
+                          ),
+                        ),
                         selected: _selectedCategoryIds.contains(category.id),
                         onSelected: (selected) => setState(() {
                           if (selected) {
@@ -966,15 +1216,30 @@ class _AddWordSheetState extends ConsumerState<_AddWordSheet> {
                 ),
               ],
               const SizedBox(height: 16),
-              FilledButton(
-                onPressed: _submitting ? null : _submit,
-                child: _submitting
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Salvar'),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _submitting
+                          ? null
+                          : () => Navigator.of(context).pop(),
+                      child: const Text('Cancelar'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: _submitting ? null : _submit,
+                      child: _submitting
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Salvar'),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

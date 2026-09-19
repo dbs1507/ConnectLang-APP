@@ -3,12 +3,17 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:flutter_lucide/flutter_lucide.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../notebook/notebook_fab.dart';
+import '../../design_system/components/cards/app_surface.dart';
+import '../../design_system/theme/app_colors.dart';
+import '../../design_system/theme/app_spacing.dart';
+import '../../design_system/theme/app_typography.dart';
 import '../vocabulary/models/vocab_category.dart';
 import '../vocabulary/models/vocabulary_entry.dart';
 import '../vocabulary/vocabulary_controller.dart';
@@ -18,6 +23,7 @@ import 'library_repository.dart';
 import 'models/inline_translation.dart';
 import 'models/library_text.dart';
 import 'models/text_question.dart';
+import 'tappable_reading_text.dart';
 import 'text_questions_page.dart';
 
 class TextReadingPage extends ConsumerStatefulWidget {
@@ -45,7 +51,6 @@ class _TextReadingPageState extends ConsumerState<TextReadingPage> {
   bool _savingPersonal = false;
   String? _ownedError;
 
-  bool _showTranslationOptions = false;
   bool _showInlineTranslation = false;
   bool _translatingInline = false;
   late String _translationTargetLang = _text.language == 'PT' ? 'EN' : 'PT';
@@ -53,6 +58,7 @@ class _TextReadingPageState extends ConsumerState<TextReadingPage> {
   final Set<String> _loadingKeys = {};
   String? _translationError;
   int _translationRequestId = 0;
+  ReadingSelection? _readingSelection;
 
   @override
   void initState() {
@@ -71,6 +77,16 @@ class _TextReadingPageState extends ConsumerState<TextReadingPage> {
   void dispose() {
     _player.dispose();
     super.dispose();
+  }
+
+  void _closeReading() {
+    final nav = Navigator.of(context);
+    if (nav.canPop()) {
+      nav.pop();
+      return;
+    }
+    final path = GoRouterState.of(context).uri.path;
+    context.go(path.startsWith('/aluno') ? '/aluno/biblioteca' : '/estudo/biblioteca');
   }
 
   Future<void> _loadQuestionSet() async {
@@ -242,12 +258,57 @@ class _TextReadingPageState extends ConsumerState<TextReadingPage> {
     }
   }
 
-  void _openCapture() {
-    showModalBottomSheet(
+  String? get _selectedText => _readingSelection?.text;
+
+  void _clearReadingSelection() {
+    if (_readingSelection == null) return;
+    setState(() => _readingSelection = null);
+  }
+
+  void _onTapReadingToken({
+    required String scope,
+    required int paragraphIndex,
+    required int tokenIndex,
+    required String paragraph,
+  }) {
+    final next = selectionFromTap(
+      current: _readingSelection,
+      scope: scope,
+      paragraphIndex: paragraphIndex,
+      tokenIndex: tokenIndex,
+      tokens: tokenizeReadingParagraph(paragraph),
+    );
+    setState(() => _readingSelection = next);
+  }
+
+  void _onLongPressReadingToken({
+    required String scope,
+    required int paragraphIndex,
+    required int tokenIndex,
+    required String paragraph,
+  }) {
+    setState(() {
+      _readingSelection = selectionFromSentence(
+        scope: scope,
+        paragraphIndex: paragraphIndex,
+        tokenIndex: tokenIndex,
+        tokens: tokenizeReadingParagraph(paragraph),
+      );
+    });
+  }
+
+  Future<void> _openCapture([String? term]) async {
+    final initial = (term ?? _selectedText)?.trim();
+    if (initial == null || initial.isEmpty) return;
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => _SaveVocabFromTextSheet(text: _text),
+      builder: (_) => _SaveVocabFromTextSheet(
+        text: _text,
+        initialTerm: initial,
+      ),
     );
+    if (mounted) _clearReadingSelection();
   }
 
   String _lineKey(InlineTranslationUnit unit) {
@@ -259,10 +320,14 @@ class _TextReadingPageState extends ConsumerState<TextReadingPage> {
       setState(() {
         _showInlineTranslation = false;
         _translationError = null;
+        _readingSelection = null;
       });
       return;
     }
-    setState(() => _showInlineTranslation = true);
+    setState(() {
+      _showInlineTranslation = true;
+      _readingSelection = null;
+    });
     await _loadInlineTranslations();
   }
 
@@ -360,6 +425,36 @@ class _TextReadingPageState extends ConsumerState<TextReadingPage> {
     }
   }
 
+  Widget _tappableParagraph({
+    required String scope,
+    required int paragraphIndex,
+    required String paragraph,
+  }) {
+    final selected = _readingSelection;
+    final isActive =
+        selected != null &&
+        selected.scope == scope &&
+        selected.paragraphIndex == paragraphIndex;
+    return TappableReadingParagraph(
+      text: paragraph,
+      style: _readingTextStyle,
+      selectedStart: isActive ? selected.startToken : null,
+      selectedEnd: isActive ? selected.endToken : null,
+      onTapToken: (tokenIndex) => _onTapReadingToken(
+        scope: scope,
+        paragraphIndex: paragraphIndex,
+        tokenIndex: tokenIndex,
+        paragraph: paragraph,
+      ),
+      onLongPressToken: (tokenIndex) => _onLongPressReadingToken(
+        scope: scope,
+        paragraphIndex: paragraphIndex,
+        tokenIndex: tokenIndex,
+        paragraph: paragraph,
+      ),
+    );
+  }
+
   List<Widget> _inlineTranslationBody(BuildContext context) {
     final units = buildInlineTranslationUnits(_text.content);
     return [
@@ -371,21 +466,38 @@ class _TextReadingPageState extends ConsumerState<TextReadingPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SelectableText(units[i].text),
+              _tappableParagraph(
+                scope: 'inline',
+                paragraphIndex: i,
+                paragraph: units[i].text,
+              ),
               const SizedBox(height: 4),
               Text(
                 _loadingKeys.contains(_lineKey(units[i]))
                     ? 'Traduzindo…'
                     : (_translations[_lineKey(units[i])] ??
                           'Tradução indisponível'),
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.tertiary,
-                  fontSize: 15,
-                  height: 1.4,
+                style: AppTypography.textTheme.bodyMedium?.copyWith(
+                  color: AppColors.foreground,
+                  height: 1.45,
                 ),
               ),
             ],
           ),
+        ),
+      ],
+    ];
+  }
+
+  List<Widget> _readingBody() {
+    final paragraphs = readingParagraphs(_text.content);
+    return [
+      for (var i = 0; i < paragraphs.length; i++) ...[
+        if (i > 0) const SizedBox(height: AppSpacing.lg),
+        _tappableParagraph(
+          scope: 'body',
+          paragraphIndex: i,
+          paragraph: paragraphs[i],
         ),
       ],
     ];
@@ -397,255 +509,271 @@ class _TextReadingPageState extends ConsumerState<TextReadingPage> {
         ref.watch(libraryControllerProvider).value?.isRead(_text.id) ?? false;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_text.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-        actions: [
-          if (!_text.isOwned)
-            IconButton(
-              icon: Icon(
-                isRead ? Icons.check_circle : Icons.check_circle_outline,
+      backgroundColor: AppColors.backgroundMuted,
+      extendBody: false,
+      floatingActionButton: _selectedText == null ? const NotebookFab() : null,
+      bottomNavigationBar: _selectedText == null
+          ? null
+          : Material(
+              color: AppColors.background,
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.xl,
+                    AppSpacing.md,
+                    AppSpacing.xl,
+                    AppSpacing.md,
+                  ),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        tooltip: 'Limpar seleção',
+                        onPressed: _clearReadingSelection,
+                        icon: const Icon(LucideIcons.x),
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: () => _openCapture(),
+                          icon: const Icon(LucideIcons.book_plus, size: 18),
+                          label: Text(
+                            'Salvar "${_truncatedSelection(_selectedText!)}"',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              tooltip: isRead ? 'Marcar como não lido' : 'Marcar como lido',
-              onPressed: () => ref
-                  .read(libraryControllerProvider.notifier)
-                  .toggleRead(_text),
             ),
-          IconButton(
-            icon: const Icon(Icons.bookmark_add_outlined),
-            tooltip: 'Salvar no vocabulário',
-            onPressed: _openCapture,
-          ),
-        ],
-      ),
-      floatingActionButton: const NotebookFab(),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
+        bottom: false,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.md,
+                AppSpacing.sm,
+                AppSpacing.xl,
+                AppSpacing.lg,
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Chip(
-                    label: Text(
-                      taughtLanguages[_text.language] ?? _text.language,
+                  _ReadingCircleButton(
+                    icon: LucideIcons.arrow_left,
+                    tooltip: 'Voltar',
+                    onPressed: _closeReading,
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: Text(
+                      _text.title,
+                      style: Theme.of(context).textTheme.headlineMedium,
                     ),
                   ),
-                  if (_text.cefr != null) Chip(label: Text(_text.cefr!)),
-                  if (_text.sourceKind == LibraryTextSource.temporary &&
-                      _text.expiresAt != null)
-                    Chip(label: Text('Expira em ${_text.formatExpiresIn()}')),
+                  const SizedBox(width: AppSpacing.sm),
+                  if (!_text.isOwned)
+                    _ReadingCircleButton(
+                      icon: LucideIcons.check,
+                      tooltip: isRead
+                          ? 'Marcar como não lido'
+                          : 'Marcar como lido',
+                      filled: isRead,
+                      onPressed: () => ref
+                          .read(libraryControllerProvider.notifier)
+                          .toggleRead(_text),
+                    ),
                 ],
               ),
-              if (_text.sourceKind == LibraryTextSource.temporary) ...[
-                const SizedBox(height: 12),
-                FilledButton.tonalIcon(
-                  onPressed: _savingPersonal ? null : _saveToPersonal,
-                  icon: _savingPersonal
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.bookmark_added_outlined),
-                  label: const Text('Guardar nos pessoais'),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.xl,
+                  AppSpacing.md,
+                  AppSpacing.xl,
+                  AppSpacing.xxxl,
                 ),
-              ],
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: _loadingAudio ? null : _toggleAudio,
-                    icon: _loadingAudio
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Icon(_isPlaying ? Icons.pause : Icons.play_arrow),
-                    label: Text(_isPlaying ? 'Pausar áudio' : 'Ouvir texto'),
-                  ),
-                  SegmentedButton<String>(
-                    segments: const [
-                      ButtonSegment(value: 'female', label: Text('Voz ♀')),
-                      ButtonSegment(value: 'male', label: Text('Voz ♂')),
-                    ],
-                    selected: {_voiceGender},
-                    onSelectionChanged: (value) => _changeVoice(value.first),
-                  ),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        tooltip: 'Mais devagar',
-                        onPressed: () => _nudgeRate(-0.25),
-                        icon: const Icon(Icons.remove),
-                      ),
-                      Text('${_playbackRate.toStringAsFixed(2)}×'),
-                      IconButton(
-                        tooltip: 'Mais rápido',
-                        onPressed: () => _nudgeRate(0.25),
-                        icon: const Icon(Icons.add),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              if (_audioError != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  _audioError!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
-              ],
-              if (_ownedError != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  _ownedError!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
-              ],
-              const SizedBox(height: 16),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      InkWell(
-                        onTap: () => setState(
-                          () => _showTranslationOptions =
-                              !_showTranslationOptions,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: AppSpacing.sm,
+                      runSpacing: AppSpacing.sm,
+                      children: [
+                        _ReadingChip(
+                          label:
+                              taughtLanguages[_text.language] ?? _text.language,
                         ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.translate,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                            const SizedBox(width: 8),
-                            const Expanded(
-                              child: Text('Tradução ao lado do texto'),
-                            ),
-                            Text(
-                              taughtLanguages[_translationTargetLang] ??
-                                  _translationTargetLang,
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                            Icon(
-                              _showTranslationOptions
-                                  ? Icons.expand_less
-                                  : Icons.expand_more,
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (_showTranslationOptions) ...[
-                        const SizedBox(height: 12),
-                        DropdownButtonFormField<String>(
-                          initialValue: _translationTargetLang,
-                          decoration: const InputDecoration(
-                            labelText: 'Traduzir para',
+                        if (_text.cefr != null)
+                          _ReadingChip(label: _text.cefr!),
+                        if (_text.sourceKind == LibraryTextSource.temporary &&
+                            _text.expiresAt != null)
+                          _ReadingChip(
+                            label: 'Expira em ${_text.formatExpiresIn()}',
                           ),
-                          items: [
-                            for (final entry in taughtLanguages.entries)
-                              if (entry.key != _text.language)
-                                DropdownMenuItem(
-                                  value: entry.key,
-                                  child: Text(entry.value),
-                                ),
-                          ],
-                          onChanged: (value) {
-                            if (value == null ||
-                                value == _translationTargetLang) {
-                              return;
-                            }
-                            setState(() {
-                              _translationTargetLang = value;
-                              _translations.clear();
-                            });
-                            if (_showInlineTranslation) {
-                              unawaited(_loadInlineTranslations());
-                            }
-                          },
-                        ),
-                        const SizedBox(height: 12),
-                        OutlinedButton(
-                          onPressed: _translatingInline
-                              ? null
-                              : _toggleInlineTranslation,
-                          child: _translatingInline
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : Text(
-                                  _showInlineTranslation
-                                      ? 'Ocultar tradução'
-                                      : 'Mostrar tradução',
-                                ),
-                        ),
                       ],
+                    ),
+                    if (_text.sourceKind == LibraryTextSource.temporary) ...[
+                      const SizedBox(height: AppSpacing.md),
+                      TextButton(
+                        onPressed: _savingPersonal ? null : _saveToPersonal,
+                        child: Text(
+                          _savingPersonal
+                              ? 'Guardando…'
+                              : 'Guardar nos pessoais',
+                        ),
+                      ),
                     ],
-                  ),
+                    const SizedBox(height: AppSpacing.lg),
+                    _AudioPlayerCard(
+                      player: _player,
+                      loading: _loadingAudio,
+                      playing: _isPlaying,
+                      rate: _playbackRate,
+                      voiceGender: _voiceGender,
+                      error: _audioError,
+                      onToggle: _toggleAudio,
+                      onNudgeRate: _nudgeRate,
+                      onChangeVoice: _changeVoice,
+                    ),
+                    if (_ownedError != null) ...[
+                      const SizedBox(height: AppSpacing.sm),
+                      Text(
+                        _ownedError!,
+                        style: const TextStyle(color: AppColors.destructive),
+                      ),
+                    ],
+                    const SizedBox(height: AppSpacing.lg),
+                    _TranslationBar(
+                      enabled: _showInlineTranslation,
+                      loading: _translatingInline,
+                      targetLanguage: _translationTargetLang,
+                      sourceLanguage: _text.language,
+                      onToggle: _toggleInlineTranslation,
+                      onLanguageSelected: (value) {
+                        if (value == _translationTargetLang) return;
+                        setState(() {
+                          _translationTargetLang = value;
+                          _translations.clear();
+                        });
+                        if (_showInlineTranslation) {
+                          unawaited(_loadInlineTranslations());
+                        }
+                      },
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    Text(
+                      'Toque numa palavra. Toque em outra para a frase. Toque de novo para desmarcar.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+                    if (_showInlineTranslation)
+                      ..._inlineTranslationBody(context)
+                    else
+                      ..._readingBody(),
+                    if (_showInlineTranslation && _translationError != null) ...[
+                      const SizedBox(height: AppSpacing.md),
+                      Text(
+                        _translationError!,
+                        style: const TextStyle(color: AppColors.destructive),
+                      ),
+                    ],
+                    if (_questionSet != null) ...[
+                      const SizedBox(height: AppSpacing.xl),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: _openQuestions,
+                          child: const Text('Perguntas de compreensão'),
+                        ),
+                      ),
+                    ] else if (_text.isOwned && !_loadingQuestions) ...[
+                      const SizedBox(height: AppSpacing.xl),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: _generatingQuestions
+                              ? null
+                              : _generateQuestions,
+                          child: Text(
+                            _generatingQuestions
+                                ? 'Gerando…'
+                                : 'Gerar perguntas com IA',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-              const SizedBox(height: 20),
-              if (_showInlineTranslation)
-                ..._inlineTranslationBody(context)
-              else
-                SelectionArea(
-                  child: MarkdownBody(data: _text.content, selectable: true),
-                ),
-              if (_showInlineTranslation && _translationError != null) ...[
-                const SizedBox(height: 12),
-                Text(
-                  _translationError!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
-              ],
-              const SizedBox(height: 16),
-              OutlinedButton.icon(
-                onPressed: _openCapture,
-                icon: const Icon(Icons.bookmark_add_outlined),
-                label: const Text('Salvar trecho no vocabulário'),
-              ),
-              if (_questionSet != null) ...[
-                const SizedBox(height: 24),
-                FilledButton.icon(
-                  onPressed: _openQuestions,
-                  icon: const Icon(Icons.quiz_outlined),
-                  label: const Text('Perguntas de compreensão'),
-                ),
-              ] else if (_text.isOwned && !_loadingQuestions) ...[
-                const SizedBox(height: 24),
-                FilledButton.icon(
-                  onPressed: _generatingQuestions ? null : _generateQuestions,
-                  icon: _generatingQuestions
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.auto_awesome),
-                  label: const Text('Gerar perguntas com IA'),
-                ),
-              ] else if (!_loadingQuestions) ...[
-                const SizedBox(height: 24),
-                Text(
-                  'Ainda não há perguntas de compreensão pra este texto.',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ],
-            ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+const _readingCardRadius = BorderRadius.all(Radius.circular(16));
+
+final _readingTextStyle = TextStyle(
+  fontFamily: AppTypography.titleFontFamily,
+  fontSize: 18,
+  height: 1.55,
+  fontWeight: FontWeight.w400,
+  color: AppColors.heading,
+);
+
+String _truncatedSelection(String text) {
+  final compact = text.replaceAll(RegExp(r'\s+'), ' ');
+  if (compact.length <= 28) return compact;
+  return '${compact.substring(0, 28).trimRight()}…';
+}
+
+String _formatAudioDuration(Duration duration) {
+  final minutes = duration.inMinutes;
+  final seconds = duration.inSeconds % 60;
+  return '$minutes:${seconds.toString().padLeft(2, '0')}';
+}
+
+class _ReadingCircleButton extends StatelessWidget {
+  const _ReadingCircleButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+    this.filled = false,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+  final bool filled;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: filled ? AppColors.primary : AppColors.background,
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onPressed,
+          child: Ink(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: filled ? null : Border.all(color: AppColors.border),
+            ),
+            child: Icon(
+              icon,
+              size: 20,
+              color: filled ? Colors.white : AppColors.heading,
+            ),
           ),
         ),
       ),
@@ -653,10 +781,288 @@ class _TextReadingPageState extends ConsumerState<TextReadingPage> {
   }
 }
 
+class _ReadingChip extends StatelessWidget {
+  const _ReadingChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+          color: AppColors.foreground,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
+  }
+}
+
+class _AudioPlayerCard extends StatelessWidget {
+  const _AudioPlayerCard({
+    required this.player,
+    required this.loading,
+    required this.playing,
+    required this.rate,
+    required this.voiceGender,
+    required this.onToggle,
+    required this.onNudgeRate,
+    required this.onChangeVoice,
+    this.error,
+  });
+
+  final AudioPlayer player;
+  final bool loading;
+  final bool playing;
+  final double rate;
+  final String voiceGender;
+  final VoidCallback onToggle;
+  final ValueChanged<double> onNudgeRate;
+  final ValueChanged<String> onChangeVoice;
+  final String? error;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppSurface(
+      borderRadius: _readingCardRadius,
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.md,
+        AppSpacing.lg,
+        AppSpacing.md,
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Material(
+                color: AppColors.primary,
+                shape: const CircleBorder(),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: loading ? null : onToggle,
+                  child: SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: loading
+                        ? const Padding(
+                            padding: EdgeInsets.all(10),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Icon(
+                            playing ? LucideIcons.pause : LucideIcons.play,
+                            color: Colors.white,
+                          ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: StreamBuilder<Duration>(
+                  stream: player.positionStream,
+                  builder: (context, snapshot) {
+                    final position = snapshot.data ?? Duration.zero;
+                    final duration = player.duration ?? Duration.zero;
+                    final maxMs = duration.inMilliseconds
+                        .toDouble()
+                        .clamp(1, double.infinity)
+                        .toDouble();
+                    final value = position.inMilliseconds
+                        .toDouble()
+                        .clamp(0, maxMs)
+                        .toDouble();
+                    return Row(
+                      children: [
+                        Expanded(
+                          child: SliderTheme(
+                            data: SliderTheme.of(context).copyWith(
+                              trackHeight: 3,
+                              thumbShape: const RoundSliderThumbShape(
+                                enabledThumbRadius: 6,
+                              ),
+                              overlayShape: const RoundSliderOverlayShape(
+                                overlayRadius: 12,
+                              ),
+                              activeTrackColor: AppColors.primary,
+                              inactiveTrackColor: AppColors.border,
+                              thumbColor: AppColors.primary,
+                            ),
+                            child: Slider(
+                              value: value,
+                              max: maxMs,
+                              onChanged: duration == Duration.zero
+                                  ? null
+                                  : (next) => player.seek(
+                                      Duration(milliseconds: next.round()),
+                                    ),
+                            ),
+                          ),
+                        ),
+                        Text(
+                          _formatAudioDuration(
+                            duration == Duration.zero ? position : duration,
+                          ),
+                          style: Theme.of(context).textTheme.labelMedium,
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+          Row(
+            children: [
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                tooltip: 'Mais devagar',
+                onPressed: () => onNudgeRate(-0.25),
+                icon: const Icon(LucideIcons.minus, size: 18),
+              ),
+              Text(
+                '${rate.toStringAsFixed(2)}x',
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: AppColors.heading,
+                ),
+              ),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                tooltip: 'Mais rápido',
+                onPressed: () => onNudgeRate(0.25),
+                icon: const Icon(LucideIcons.plus, size: 18),
+              ),
+              const Spacer(),
+              PopupMenuButton<String>(
+                tooltip: 'Voz',
+                onSelected: onChangeVoice,
+                itemBuilder: (context) => const [
+                  PopupMenuItem(value: 'female', child: Text('Voz ♀')),
+                  PopupMenuItem(value: 'male', child: Text('Voz ♂')),
+                ],
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.backgroundMuted,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    voiceGender == 'female' ? 'Voz ♀' : 'Voz ♂',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: AppColors.heading,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (error != null) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                error!,
+                style: const TextStyle(color: AppColors.destructive),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _TranslationBar extends StatelessWidget {
+  const _TranslationBar({
+    required this.enabled,
+    required this.loading,
+    required this.targetLanguage,
+    required this.sourceLanguage,
+    required this.onToggle,
+    required this.onLanguageSelected,
+  });
+
+  final bool enabled;
+  final bool loading;
+  final String targetLanguage;
+  final String sourceLanguage;
+  final VoidCallback onToggle;
+  final ValueChanged<String> onLanguageSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Icon(
+              LucideIcons.languages,
+              size: 18,
+              color: enabled ? AppColors.primary : AppColors.foreground,
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: InkWell(
+                onTap: loading ? null : onToggle,
+                child: Text(
+                  loading ? 'Traduzindo…' : 'Tradução ao lado do texto',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: enabled ? AppColors.heading : AppColors.foreground,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+            PopupMenuButton<String>(
+              tooltip: 'Idioma da tradução',
+              onSelected: onLanguageSelected,
+              itemBuilder: (context) => [
+                for (final entry in taughtLanguages.entries)
+                  if (entry.key != sourceLanguage)
+                    PopupMenuItem(value: entry.key, child: Text(entry.value)),
+              ],
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    taughtLanguages[targetLanguage] ?? targetLanguage,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const Icon(
+                    LucideIcons.chevron_down,
+                    size: 18,
+                    color: AppColors.foreground,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.md),
+        const Divider(height: 1),
+      ],
+    );
+  }
+}
+
 class _SaveVocabFromTextSheet extends ConsumerStatefulWidget {
-  const _SaveVocabFromTextSheet({required this.text});
+  const _SaveVocabFromTextSheet({required this.text, this.initialTerm});
 
   final LibraryText text;
+  final String? initialTerm;
 
   @override
   ConsumerState<_SaveVocabFromTextSheet> createState() =>
@@ -665,16 +1071,28 @@ class _SaveVocabFromTextSheet extends ConsumerStatefulWidget {
 
 class _SaveVocabFromTextSheetState
     extends ConsumerState<_SaveVocabFromTextSheet> {
-  final _termController = TextEditingController();
+  late final _termController = TextEditingController(
+    text: widget.initialTerm?.trim() ?? '',
+  );
   final _translationController = TextEditingController();
   final _contextController = TextEditingController();
   final _descriptionController = TextEditingController();
-  VocabEntryKind _entryKind = VocabEntryKind.word;
+  late VocabEntryKind _entryKind = VocabEntryKind.infer(
+    widget.initialTerm ?? '',
+  );
   String? _partOfSpeech;
   String? _categoryId;
   bool _enriching = false;
   bool _submitting = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_termController.text.trim().isNotEmpty) {
+      unawaited(_enrich());
+    }
+  }
 
   @override
   void dispose() {
@@ -814,7 +1232,7 @@ class _SaveVocabFromTextSheetState
             ),
             const SizedBox(height: 8),
             Text(
-              'Selecione o trecho no texto, copie e cole aqui — ou digite a palavra/frase.',
+              'A palavra ou frase já vem do trecho que você selecionou.',
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 16),
@@ -851,7 +1269,7 @@ class _SaveVocabFromTextSheetState
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Icon(Icons.auto_awesome, size: 18),
+                  : const Icon(LucideIcons.astroid, size: 18),
               label: const Text('Preencher com IA'),
             ),
             if (_partOfSpeech != null) ...[

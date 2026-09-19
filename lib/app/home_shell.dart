@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_lucide/flutter_lucide.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/session/app_role.dart';
 import '../core/session/auth_controller.dart';
-import '../features/home/subscriber_dashboard_page.dart';
+import '../features/home/subscriber_home_shell.dart';
 import '../features/notebook/notebook_fab.dart';
 import 'learner_routes.dart';
 
@@ -24,7 +25,7 @@ class _LearnerHomeScaffold extends ConsumerWidget {
         title: Text(title),
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout),
+            icon: const Icon(LucideIcons.log_out),
             tooltip: 'Sair',
             onPressed: () => ref.read(authControllerProvider.notifier).logout(),
           ),
@@ -40,31 +41,31 @@ class _LearnerHomeScaffold extends ConsumerWidget {
             ),
             const SizedBox(height: 24),
             FilledButton.icon(
-              icon: const Icon(Icons.style_outlined),
+              icon: const Icon(LucideIcons.square_stack),
               label: const Text('Vocabulário'),
               onPressed: () => context.push(LearnerPaths.vocabulary(role)),
             ),
             const SizedBox(height: 12),
             FilledButton.icon(
-              icon: const Icon(Icons.edit_note),
+              icon: const Icon(LucideIcons.notebook_pen),
               label: const Text('Caderno'),
               onPressed: () => context.push(LearnerPaths.notebook(role)),
             ),
             const SizedBox(height: 12),
             FilledButton.icon(
-              icon: const Icon(Icons.menu_book_outlined),
+              icon: const Icon(LucideIcons.book),
               label: const Text('Biblioteca'),
               onPressed: () => context.push(LearnerPaths.library(role)),
             ),
             const SizedBox(height: 12),
             FilledButton.icon(
-              icon: const Icon(Icons.headphones),
+              icon: const Icon(LucideIcons.headphones),
               label: const Text('Ditado'),
               onPressed: () => context.push(LearnerPaths.dictation(role)),
             ),
             const SizedBox(height: 12),
             FilledButton.icon(
-              icon: const Icon(Icons.school_outlined),
+              icon: const Icon(LucideIcons.graduation_cap),
               label: const Text('Nivelamento'),
               onPressed: () => context.push(LearnerPaths.placement(role)),
             ),
@@ -87,5 +88,5 @@ class SubscriberHomePage extends StatelessWidget {
   const SubscriberHomePage({super.key});
 
   @override
-  Widget build(BuildContext context) => const SubscriberDashboardPage();
+  Widget build(BuildContext context) => const SubscriberHomeShell();
 }

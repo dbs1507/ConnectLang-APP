@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_lucide/flutter_lucide.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 
@@ -71,6 +72,7 @@ class _VocabTtsButtonState extends ConsumerState<VocabTtsButton> {
   @override
   Widget build(BuildContext context) {
     return IconButton(
+      visualDensity: VisualDensity.compact,
       tooltip: _playing ? 'Pausar' : 'Ouvir',
       onPressed: _loading ? null : _toggle,
       icon: _loading
@@ -80,7 +82,7 @@ class _VocabTtsButtonState extends ConsumerState<VocabTtsButton> {
               child: CircularProgressIndicator(strokeWidth: 2),
             )
           : Icon(
-              _playing ? Icons.pause_circle_outline : Icons.volume_up_outlined,
+              _playing ? LucideIcons.circle_pause : LucideIcons.volume_2,
             ),
     );
   }
