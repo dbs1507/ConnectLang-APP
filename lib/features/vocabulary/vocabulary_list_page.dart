@@ -381,10 +381,9 @@ class _MineListBodyState extends ConsumerState<_MineListBody> {
       children: [
         _PracticeCard(
           dueCount: dueCount,
-          onPractice: () => Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => FlashcardPracticePage(kindFilter: _kindFilter),
-            ),
+          onPractice: () => openFlashcardPractice(
+            context,
+            initialKind: _kindFilter,
           ),
         ),
         const SizedBox(height: AppSpacing.xl),
@@ -476,7 +475,7 @@ class _MineListBodyState extends ConsumerState<_MineListBody> {
             itemBuilder: (context) => const [
               PopupMenuItem(
                 value: 'explain',
-                child: Text('Explicar com IA'),
+                child: Text('LIA explica'),
               ),
               PopupMenuItem(
                 value: 'archive',
@@ -999,7 +998,7 @@ class _AddWordSheetState extends ConsumerState<_AddWordSheet> {
   Future<void> _enrichWithAi() async {
     final term = _termController.text.trim();
     if (term.isEmpty) {
-      setState(() => _error = 'Digite a palavra antes de preencher com IA.');
+      setState(() => _error = 'Digite a palavra antes de pedir pra LIA.');
       return;
     }
     setState(() {
@@ -1012,7 +1011,7 @@ class _AddWordSheetState extends ConsumerState<_AddWordSheet> {
           .enrichTerm(term: term, language: _language, entryKind: _entryKind);
       if (result == null) {
         setState(
-          () => _error = 'Não foi possível preencher com IA. Tente novamente.',
+          () => _error = 'A LIA não conseguiu preencher agora. Tente novamente.',
         );
         return;
       }
@@ -1028,7 +1027,7 @@ class _AddWordSheetState extends ConsumerState<_AddWordSheet> {
       });
     } catch (_) {
       setState(
-        () => _error = 'Não foi possível preencher com IA. Tente novamente.',
+        () => _error = 'A LIA não conseguiu preencher agora. Tente novamente.',
       );
     } finally {
       if (mounted) setState(() => _enriching = false);
@@ -1155,7 +1154,7 @@ class _AddWordSheetState extends ConsumerState<_AddWordSheet> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(LucideIcons.astroid, size: 18),
-                label: const Text('Preencher com IA'),
+                label: const Text('LIA preenche'),
               ),
               const SizedBox(height: 12),
               TextFormField(

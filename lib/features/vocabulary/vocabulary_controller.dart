@@ -8,7 +8,7 @@ import 'models/vocabulary_entry.dart';
 import 'vocabulary_repository.dart';
 
 final vocabularyRepositoryProvider = Provider<VocabularyRepository>((ref) {
-  final userId = ref.watch(authControllerProvider).value?.id;
+  final userId = ref.watch(currentUserIdProvider);
   if (userId == null) {
     throw StateError(
       'vocabularyRepositoryProvider lido sem usuário autenticado.',
@@ -42,8 +42,27 @@ final baseVocabularyProvider =
 
 class VocabularyController extends AsyncNotifier<List<VocabularyEntry>> {
   @override
-  Future<List<VocabularyEntry>> build() {
+  Future<List<VocabularyEntry>> build() async {
+    final userId = ref.watch(currentUserIdProvider);
+    if (userId == null) return const <VocabularyEntry>[];
     return ref.read(vocabularyRepositoryProvider).fetchMine();
+  }
+
+  /// Espera o fetch inicial acabar — senão o `build()` em voo sobrescreve
+  /// a palavra que acabou de ser salva com a lista vazia de antes do insert.
+  Future<List<VocabularyEntry>> _loaded() async {
+    try {
+      return [...await future];
+    } catch (_) {
+      return [...(state.value ?? const <VocabularyEntry>[])];
+    }
+  }
+
+  List<VocabularyEntry> _withEntry(
+    List<VocabularyEntry> current,
+    VocabularyEntry entry,
+  ) {
+    return [entry, ...current.where((e) => e.id != entry.id)];
   }
 
   Future<void> addWord({
@@ -57,19 +76,21 @@ class VocabularyController extends AsyncNotifier<List<VocabularyEntry>> {
     List<String> categoryIds = const [],
     VocabEntryKind entryKind = VocabEntryKind.word,
   }) async {
-    final repo = ref.read(vocabularyRepositoryProvider);
-    final entry = await repo.addWord(
-      term: term,
-      translation: translation,
-      language: language,
-      description: description,
-      context: context,
-      example: example,
-      partOfSpeech: partOfSpeech,
-      categoryIds: categoryIds,
-      entryKind: entryKind,
-    );
-    state = AsyncData([entry, ...state.value ?? []]);
+    final current = await _loaded();
+    final entry = await ref
+        .read(vocabularyRepositoryProvider)
+        .addWord(
+          term: term,
+          translation: translation,
+          language: language,
+          description: description,
+          context: context,
+          example: example,
+          partOfSpeech: partOfSpeech,
+          categoryIds: categoryIds,
+          entryKind: entryKind,
+        );
+    state = AsyncData(_withEntry(current, entry));
   }
 
   Future<void> addFromText({
@@ -88,6 +109,7 @@ class VocabularyController extends AsyncNotifier<List<VocabularyEntry>> {
     String? personalTextId,
     List<String> categoryIds = const [],
   }) async {
+    final current = await _loaded();
     final entry = await ref
         .read(vocabularyRepositoryProvider)
         .addFromText(
@@ -106,14 +128,15 @@ class VocabularyController extends AsyncNotifier<List<VocabularyEntry>> {
           personalTextId: personalTextId,
           categoryIds: categoryIds,
         );
-    state = AsyncData([entry, ...state.value ?? []]);
+    state = AsyncData(_withEntry(current, entry));
   }
 
   Future<void> rate(String entryId, SrsRating rating) async {
-    final current = state.value ?? [];
+    final current = await _loaded();
     final entry = current.firstWhere((e) => e.id == entryId);
-    final repo = ref.read(vocabularyRepositoryProvider);
-    final updated = await repo.rate(entry, rating);
+    final updated = await ref
+        .read(vocabularyRepositoryProvider)
+        .rate(entry, rating);
     state = AsyncData([
       for (final e in current)
         if (e.id == entryId) updated else e,
@@ -121,10 +144,9 @@ class VocabularyController extends AsyncNotifier<List<VocabularyEntry>> {
   }
 
   Future<void> archive(String entryId) async {
-    final current = state.value ?? [];
+    final current = await _loaded();
     final entry = current.where((e) => e.id == entryId).firstOrNull;
-    final repo = ref.read(vocabularyRepositoryProvider);
-    await repo.archive(entryId);
+    await ref.read(vocabularyRepositoryProvider).archive(entryId);
     state = AsyncData([
       for (final e in current)
         if (e.id != entryId) e,
@@ -138,23 +160,26 @@ class VocabularyController extends AsyncNotifier<List<VocabularyEntry>> {
   }
 
   Future<void> addFromBase(BaseVocabularyEntry base) async {
-    final repo = ref.read(vocabularyRepositoryProvider);
-    final entry = await repo.addFromBase(base);
-    state = AsyncData([entry, ...state.value ?? []]);
+    final current = await _loaded();
+    final entry = await ref
+        .read(vocabularyRepositoryProvider)
+        .addFromBase(base);
+    state = AsyncData(_withEntry(current, entry));
   }
 
   void prepend(VocabularyEntry entry) {
-    final current = state.value;
-    if (current == null) return;
+    final current = state.value ?? const <VocabularyEntry>[];
     if (current.any((e) => e.id == entry.id)) return;
-    state = AsyncData([entry, ...current]);
+    state = AsyncData(_withEntry(current, entry));
   }
 }
 
 class ArchivedVocabularyController
     extends AsyncNotifier<List<VocabularyEntry>> {
   @override
-  Future<List<VocabularyEntry>> build() {
+  Future<List<VocabularyEntry>> build() async {
+    final userId = ref.watch(currentUserIdProvider);
+    if (userId == null) return const <VocabularyEntry>[];
     return ref.read(vocabularyRepositoryProvider).fetchArchived();
   }
 

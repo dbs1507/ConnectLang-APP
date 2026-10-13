@@ -63,14 +63,20 @@ class VocabularyRepository {
   Future<Map<String, List<String>>> _fetchCategoryLinks(
     List<String> wordIds,
   ) async {
-    final rows = await supabase
-        .from('student_vocabulary_categories')
-        .select('student_vocab_id, category_id')
-        .inFilter('student_vocab_id', wordIds);
+    if (wordIds.isEmpty) return const {};
     final result = <String, List<String>>{};
-    for (final row in (rows as List).cast<Map<String, dynamic>>()) {
-      final wordId = row['student_vocab_id'] as String;
-      (result[wordId] ??= []).add(row['category_id'] as String);
+    const pageSize = 200;
+    for (var i = 0; i < wordIds.length; i += pageSize) {
+      final end = i + pageSize > wordIds.length ? wordIds.length : i + pageSize;
+      final slice = wordIds.sublist(i, end);
+      final rows = await supabase
+          .from('student_vocabulary_categories')
+          .select('student_vocab_id, category_id')
+          .inFilter('student_vocab_id', slice);
+      for (final row in (rows as List).cast<Map<String, dynamic>>()) {
+        final wordId = row['student_vocab_id'] as String;
+        (result[wordId] ??= []).add(row['category_id'] as String);
+      }
     }
     return result;
   }

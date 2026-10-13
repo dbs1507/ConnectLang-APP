@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_lucide/flutter_lucide.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 
+import '../../core/audio/tts_audio_cache.dart';
 import '../../design_system/components/feedback/lia_mark.dart';
 import '../../design_system/components/progress/lesson_progress.dart';
 import '../../design_system/theme/app_colors.dart';
@@ -43,10 +45,12 @@ class DictationSessionPage extends ConsumerStatefulWidget {
 class _DictationSessionPageState extends ConsumerState<DictationSessionPage> {
   final _answerController = TextEditingController();
   final _player = AudioPlayer();
-  final Map<String, String> _audioUrlCache = {};
 
   StreamSubscription<PlayerState>? _playerSub;
   String? _loadedItemId;
+  Future<void>? _prepareFuture;
+  Future<void> _playerChain = Future<void>.value();
+  int _prepGen = 0;
   bool _playing = false;
   bool _hasPlayed = false;
 
@@ -84,10 +88,12 @@ class _DictationSessionPageState extends ConsumerState<DictationSessionPage> {
     _playerSub = _player.playerStateStream.listen((state) {
       if (!mounted) return;
       setState(() {
-        _playing = state.playing &&
+        _playing =
+            state.playing &&
             (state.processingState != ProcessingState.completed || _loop);
       });
     });
+    _prepareCurrent();
   }
 
   @override
@@ -105,6 +111,62 @@ class _DictationSessionPageState extends ConsumerState<DictationSessionPage> {
     _loadedItemId = null;
     _playing = false;
     _hasPlayed = false;
+  }
+
+  void _prepareCurrent() {
+    if (widget.items.isEmpty || _index >= widget.items.length) return;
+    final gen = ++_prepGen;
+    final item = widget.items[_index];
+    final cache = ref.read(ttsAudioCacheProvider);
+    final repo = ref.read(dictationRepositoryProvider);
+    final fileFuture = cache.ensureFile(
+      text: item.promptText,
+      language: item.language,
+      resolveUrl: () =>
+          repo.fetchAudioUrl(text: item.promptText, language: item.language),
+    );
+    final next = _index + 1;
+    if (next < widget.items.length) {
+      final upcoming = widget.items[next];
+      unawaited(
+        cache
+            .ensureFile(
+              text: upcoming.promptText,
+              language: upcoming.language,
+              priority: TtsFetchPriority.background,
+              resolveUrl: () => repo.fetchAudioUrl(
+                text: upcoming.promptText,
+                language: upcoming.language,
+              ),
+            )
+            .then((_) {}, onError: (_, _) {}),
+      );
+    }
+    final job = _setItemFile(fileFuture, gen, item.id);
+    _prepareFuture = job;
+    unawaited(
+      job.then(
+        (_) {},
+        onError: (_, _) {
+          if (gen == _prepGen) _prepareFuture = null;
+        },
+      ),
+    );
+  }
+
+  Future<void> _setItemFile(Future<File> fileFuture, int gen, String itemId) {
+    _playerChain = _playerChain.catchError((_) {}).then((_) async {
+      final file = await fileFuture;
+      if (!mounted || gen != _prepGen) return;
+      await _player.setFilePath(file.path);
+      if (!mounted || gen != _prepGen) return;
+      _loadedItemId = itemId;
+      try {
+        await _player.setSpeed(_playbackRate);
+      } catch (_) {}
+      await _applyLoopMode();
+    });
+    return _playerChain;
   }
 
   Future<void> _playAudio() async {
@@ -126,22 +188,13 @@ class _DictationSessionPageState extends ConsumerState<DictationSessionPage> {
       _audioError = null;
     });
     try {
-      var url = _audioUrlCache[_currentItem.id];
-      if (url == null) {
-        url = await ref
-            .read(dictationRepositoryProvider)
-            .fetchAudioUrl(
-              text: _currentItem.promptText,
-              language: _currentItem.language,
-            );
-        if (url != null) _audioUrlCache[_currentItem.id] = url;
-      }
-      if (url == null) {
+      if (_prepareFuture == null) _prepareCurrent();
+      await _prepareFuture;
+      if (!mounted) return;
+      if (_loadedItemId != _currentItem.id) {
         setState(() => _audioError = 'Não foi possível gerar o áudio.');
         return;
       }
-      await _player.setUrl(url);
-      _loadedItemId = _currentItem.id;
       await _player.seek(Duration.zero);
       try {
         await _player.setSpeed(_playbackRate);
@@ -149,6 +202,10 @@ class _DictationSessionPageState extends ConsumerState<DictationSessionPage> {
       await _applyLoopMode();
       unawaited(_player.play());
       if (mounted) setState(() => _hasPlayed = true);
+    } on TtsAudioUnavailable {
+      if (mounted) {
+        setState(() => _audioError = 'Não foi possível gerar o áudio.');
+      }
     } catch (e, st) {
       debugPrint('DICTATION_AUDIO_ERROR: $e\n$st');
       if (mounted) {
@@ -226,7 +283,9 @@ class _DictationSessionPageState extends ConsumerState<DictationSessionPage> {
         .translatePrompt(
           text: item.promptText,
           language: item.language,
-          targetLocale: translationLocaleFromAppLanguage(_translationTargetLang),
+          targetLocale: translationLocaleFromAppLanguage(
+            _translationTargetLang,
+          ),
         );
     if (!mounted || item.id != _currentItem.id) return;
     setState(() {
@@ -304,8 +363,7 @@ class _DictationSessionPageState extends ConsumerState<DictationSessionPage> {
         );
     if (!mounted) return;
     final merged = mergeDictationGrades(local, aiRow);
-    final almost =
-        !_retriedAlmost && isDictationAlmostCorrect(merged.score);
+    final almost = !_retriedAlmost && isDictationAlmostCorrect(merged.score);
     setState(() {
       _checked = merged;
       _checking = false;
@@ -416,6 +474,7 @@ class _DictationSessionPageState extends ConsumerState<DictationSessionPage> {
       _answerController.clear();
       _audioError = null;
     });
+    _prepareCurrent();
     if (_translationVisible && _index < widget.items.length) {
       unawaited(_loadTranslation());
     }
@@ -466,8 +525,7 @@ class _DictationSessionPageState extends ConsumerState<DictationSessionPage> {
         checked != null &&
         !_retriedAlmost &&
         isDictationAlmostCorrect(checked.score);
-    final canCheck =
-        !_checking && _answerController.text.trim().isNotEmpty;
+    final canCheck = !_checking && _answerController.text.trim().isNotEmpty;
 
     return Scaffold(
       backgroundColor: AppColors.backgroundMuted,
@@ -540,9 +598,9 @@ class _DictationSessionPageState extends ConsumerState<DictationSessionPage> {
                       minLines: 3,
                       maxLines: 5,
                       textInputAction: TextInputAction.done,
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: AppColors.heading,
-                      ),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodyLarge?.copyWith(color: AppColors.heading),
                       onSubmitted: (_) {
                         if (canCheck) unawaited(_check());
                       },
@@ -572,9 +630,8 @@ class _DictationSessionPageState extends ConsumerState<DictationSessionPage> {
                           const SizedBox(height: AppSpacing.sm),
                           _SaveSelectionChip(
                             text: _selectedText!.trim(),
-                            onSave: () => _openSaveVocabSheet(
-                              _selectedText!.trim(),
-                            ),
+                            onSave: () =>
+                                _openSaveVocabSheet(_selectedText!.trim()),
                           ),
                         ],
                         if (_loadingReinforce) ...[
@@ -744,9 +801,7 @@ class _ListenCard extends StatelessWidget {
                       : Icon(
                           playing ? LucideIcons.pause : LucideIcons.play,
                           size: 28,
-                          color: playing
-                              ? Colors.white
-                              : AppColors.primary,
+                          color: playing ? Colors.white : AppColors.primary,
                         ),
                 ),
                 const SizedBox(height: AppSpacing.md),
@@ -815,9 +870,7 @@ class _AudioControlsRow extends StatelessWidget {
           tooltip: looping ? 'Parar loop' : 'Ouvir em loop',
           onPressed: onToggleLoop,
           style: IconButton.styleFrom(
-            backgroundColor: looping
-                ? AppColors.primary
-                : Colors.transparent,
+            backgroundColor: looping ? AppColors.primary : Colors.transparent,
             foregroundColor: looping ? Colors.white : AppColors.navText,
           ),
           icon: Icon(
@@ -880,10 +933,7 @@ class _TranslationPanel extends StatelessWidget {
           children: [
             Row(
               children: [
-                Text(
-                  'Traduzir para',
-                  style: textTheme.bodySmall,
-                ),
+                Text('Traduzir para', style: textTheme.bodySmall),
                 const Spacer(),
                 PopupMenuButton<String>(
                   tooltip: 'Idioma da tradução',
@@ -944,9 +994,7 @@ class _TranslationPanel extends StatelessWidget {
             else
               Text(
                 translation ?? '',
-                style: textTheme.bodyMedium?.copyWith(
-                  color: AppColors.heading,
-                ),
+                style: textTheme.bodyMedium?.copyWith(color: AppColors.heading),
               ),
           ],
         ),
@@ -982,9 +1030,7 @@ class _SaveSelectionChip extends StatelessWidget {
             Expanded(
               child: Text(
                 '"$text"',
-                style: textTheme.bodyMedium?.copyWith(
-                  color: AppColors.heading,
-                ),
+                style: textTheme.bodyMedium?.copyWith(color: AppColors.heading),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -1061,7 +1107,7 @@ class _SaveWordFromDictationSheetState
           );
       if (result == null) {
         setState(
-          () => _error = 'Não foi possível preencher com IA. Tente de novo.',
+          () => _error = 'A LIA não conseguiu preencher agora. Tente de novo.',
         );
         return;
       }
@@ -1084,7 +1130,7 @@ class _SaveWordFromDictationSheetState
       });
     } catch (_) {
       setState(
-        () => _error = 'Não foi possível preencher com IA. Tente de novo.',
+        () => _error = 'A LIA não conseguiu preencher agora. Tente de novo.',
       );
     } finally {
       if (mounted) setState(() => _enriching = false);
@@ -1171,7 +1217,7 @@ class _SaveWordFromDictationSheetState
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(LucideIcons.astroid, size: 18),
-              label: const Text('Preencher com IA'),
+              label: const Text('LIA preenche'),
             ),
             if (_partOfSpeech != null) ...[
               const SizedBox(height: 8),
@@ -1239,10 +1285,7 @@ class _AlmostCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Quase certo',
-              style: textTheme.headlineSmall,
-            ),
+            Text('Quase certo', style: textTheme.headlineSmall),
             const SizedBox(height: AppSpacing.sm),
             Text(
               'A frase ainda não é revelada. Tente de novo ou continue.',
@@ -1314,9 +1357,7 @@ class _ScoreCard extends StatelessWidget {
               const SizedBox(height: AppSpacing.lg),
               Text(
                 'O que ajustar',
-                style: textTheme.titleSmall?.copyWith(
-                  color: AppColors.heading,
-                ),
+                style: textTheme.titleSmall?.copyWith(color: AppColors.heading),
               ),
               const SizedBox(height: AppSpacing.sm),
               for (final mistake in result.mistakes)
@@ -1406,10 +1447,7 @@ class _ReinforceCardState extends State<_ReinforceCard> {
             Text(widget.result.explanation, style: textTheme.bodyMedium),
             if (widget.result.rule.isNotEmpty) ...[
               const SizedBox(height: AppSpacing.sm),
-              Text(
-                'Regra: ${widget.result.rule}',
-                style: textTheme.bodyMedium,
-              ),
+              Text('Regra: ${widget.result.rule}', style: textTheme.bodyMedium),
             ],
             if (drill != null) ...[
               const SizedBox(height: AppSpacing.lg),
@@ -1464,7 +1502,9 @@ class _ReinforceCardState extends State<_ReinforceCard> {
                 Text(
                   _drillOk! ? 'Certo!' : 'Resposta: ${drill.expected}',
                   style: textTheme.titleSmall?.copyWith(
-                    color: _drillOk! ? AppColors.success : AppColors.destructive,
+                    color: _drillOk!
+                        ? AppColors.success
+                        : AppColors.destructive,
                   ),
                 ),
             ],

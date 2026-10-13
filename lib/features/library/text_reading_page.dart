@@ -1,13 +1,12 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_lucide/flutter_lucide.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:path_provider/path_provider.dart';
+
+import '../../core/audio/tts_audio_cache.dart';
 
 import '../notebook/notebook_fab.dart';
 import '../../design_system/components/cards/app_surface.dart';
@@ -41,9 +40,13 @@ class _TextReadingPageState extends ConsumerState<TextReadingPage> {
 
   bool _loadingAudio = false;
   bool _isPlaying = false;
+  bool _audioReady = false;
   String? _audioError;
   String _voiceGender = 'female';
   double _playbackRate = 1;
+  Future<void>? _audioPrep;
+  Future<void> _sourceChain = Future<void>.value();
+  int _audioToken = 0;
 
   TextQuestionSet? _questionSet;
   bool _loadingQuestions = true;
@@ -64,6 +67,7 @@ class _TextReadingPageState extends ConsumerState<TextReadingPage> {
   void initState() {
     super.initState();
     _loadQuestionSet();
+    _startAudioPrep();
     _player.playerStateStream.listen((state) {
       if (!mounted) return;
       setState(
@@ -86,7 +90,9 @@ class _TextReadingPageState extends ConsumerState<TextReadingPage> {
       return;
     }
     final path = GoRouterState.of(context).uri.path;
-    context.go(path.startsWith('/aluno') ? '/aluno/biblioteca' : '/estudo/biblioteca');
+    context.go(
+      path.startsWith('/aluno') ? '/aluno/biblioteca' : '/estudo/biblioteca',
+    );
   }
 
   Future<void> _loadQuestionSet() async {
@@ -109,17 +115,78 @@ class _TextReadingPageState extends ConsumerState<TextReadingPage> {
     } catch (_) {}
   }
 
+  void _startAudioPrep() {
+    final voice = _voiceGender;
+    final token = ++_audioToken;
+    final job = _prepareAudio(voice, token);
+    _audioPrep = job;
+    unawaited(
+      job.then(
+        (_) {},
+        onError: (_, _) {
+          if (_audioToken == token) _audioPrep = null;
+        },
+      ),
+    );
+  }
+
+  Future<void> _prepareAudio(String voice, int token) async {
+    final cache = ref.read(ttsAudioCacheProvider);
+    final cached = await cache.readTextChunkPaths(
+      sourceKind: _text.sourceKind.raw,
+      textId: _text.id,
+      voiceGender: voice,
+    );
+    if (token != _audioToken || !mounted) return;
+    if (cached != null) {
+      await _applyPlaylist(cached, token);
+      return;
+    }
+    final chunks = await ref
+        .read(libraryRepositoryProvider)
+        .fetchTtsChunks(text: _text, voiceGender: voice);
+    if (token != _audioToken || !mounted) return;
+    final encoded = [
+      for (final chunk in chunks)
+        if ((chunk['audioContentBase64'] as String? ?? '').isNotEmpty)
+          chunk['audioContentBase64'] as String,
+    ];
+    final paths = await cache.writeTextChunks(
+      sourceKind: _text.sourceKind.raw,
+      textId: _text.id,
+      voiceGender: voice,
+      base64Chunks: encoded,
+    );
+    if (token != _audioToken || !mounted) return;
+    await _applyPlaylist(paths, token);
+  }
+
+  Future<void> _applyPlaylist(List<String> paths, int token) {
+    final sources = [for (final path in paths) AudioSource.file(path)];
+    _sourceChain = _sourceChain.catchError((_) {}).then((_) async {
+      if (token != _audioToken || !mounted) return;
+      await _player.setAudioSources(sources);
+      if (token != _audioToken || !mounted) return;
+      try {
+        await _player.setSpeed(_playbackRate);
+      } catch (_) {}
+      if (!mounted || token != _audioToken) return;
+      setState(() => _audioReady = true);
+    });
+    return _sourceChain;
+  }
+
   Future<void> _toggleAudio() async {
     if (_isPlaying) {
       await _player.pause();
       return;
     }
-    if (_player.processingState == ProcessingState.completed) {
-      await _player.seek(Duration.zero);
-      unawaited(_player.play());
-      return;
-    }
-    if (_player.processingState == ProcessingState.ready) {
+    if (_audioReady &&
+        (_player.processingState == ProcessingState.completed ||
+            _player.processingState == ProcessingState.ready)) {
+      if (_player.processingState == ProcessingState.completed) {
+        await _player.seek(Duration.zero);
+      }
       unawaited(_player.play());
       return;
     }
@@ -129,36 +196,22 @@ class _TextReadingPageState extends ConsumerState<TextReadingPage> {
       _audioError = null;
     });
     try {
-      final chunks = await ref
-          .read(libraryRepositoryProvider)
-          .fetchTtsChunks(text: _text, voiceGender: _voiceGender);
-      if (chunks.isEmpty) {
+      if (_audioPrep == null) _startAudioPrep();
+      await _audioPrep;
+      if (!mounted) return;
+      if (!_audioReady) {
         setState(
           () => _audioError = 'Não foi possível gerar o áudio deste texto.',
         );
         return;
       }
-      final tempDir = await getTemporaryDirectory();
-      final sources = <AudioSource>[];
-      for (var i = 0; i < chunks.length; i++) {
-        final base64Audio = chunks[i]['audioContentBase64'] as String? ?? '';
-        if (base64Audio.isEmpty) continue;
-        final bytes = base64Decode(base64Audio);
-        final file = File(
-          '${tempDir.path}/text_tts_${_text.sourceKind.raw}_${_text.id}_${_voiceGender}_$i.mp3',
-        );
-        await file.writeAsBytes(bytes, flush: true);
-        sources.add(AudioSource.file(file.path));
-      }
-      if (sources.isEmpty) {
-        setState(
-          () => _audioError = 'Não foi possível gerar o áudio deste texto.',
-        );
-        return;
-      }
-      await _player.setAudioSources(sources);
-      await _player.setSpeed(_playbackRate);
       unawaited(_player.play());
+    } on TtsAudioUnavailable {
+      if (mounted) {
+        setState(
+          () => _audioError = 'Não foi possível gerar o áudio deste texto.',
+        );
+      }
     } catch (e, st) {
       debugPrint('TEXT_TTS_ERROR: $e\n$st');
       if (mounted) {
@@ -172,7 +225,12 @@ class _TextReadingPageState extends ConsumerState<TextReadingPage> {
   Future<void> _changeVoice(String gender) async {
     if (gender == _voiceGender) return;
     await _resetAudio();
-    setState(() => _voiceGender = gender);
+    setState(() {
+      _voiceGender = gender;
+      _audioReady = false;
+      _audioError = null;
+    });
+    _startAudioPrep();
   }
 
   Future<void> _nudgeRate(double delta) async {
@@ -303,10 +361,8 @@ class _TextReadingPageState extends ConsumerState<TextReadingPage> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => _SaveVocabFromTextSheet(
-        text: _text,
-        initialTerm: initial,
-      ),
+      builder: (_) =>
+          _SaveVocabFromTextSheet(text: _text, initialTerm: initial),
     );
     if (mounted) _clearReadingSelection();
   }
@@ -429,6 +485,7 @@ class _TextReadingPageState extends ConsumerState<TextReadingPage> {
     required String scope,
     required int paragraphIndex,
     required String paragraph,
+    required SavedReadingTerms savedTerms,
   }) {
     final selected = _readingSelection;
     final isActive =
@@ -440,6 +497,7 @@ class _TextReadingPageState extends ConsumerState<TextReadingPage> {
       style: _readingTextStyle,
       selectedStart: isActive ? selected.startToken : null,
       selectedEnd: isActive ? selected.endToken : null,
+      savedTerms: savedTerms,
       onTapToken: (tokenIndex) => _onTapReadingToken(
         scope: scope,
         paragraphIndex: paragraphIndex,
@@ -455,7 +513,7 @@ class _TextReadingPageState extends ConsumerState<TextReadingPage> {
     );
   }
 
-  List<Widget> _inlineTranslationBody(BuildContext context) {
+  List<Widget> _inlineTranslationBody(SavedReadingTerms savedTerms) {
     final units = buildInlineTranslationUnits(_text.content);
     return [
       for (var i = 0; i < units.length; i++) ...[
@@ -470,6 +528,7 @@ class _TextReadingPageState extends ConsumerState<TextReadingPage> {
                 scope: 'inline',
                 paragraphIndex: i,
                 paragraph: units[i].text,
+                savedTerms: savedTerms,
               ),
               const SizedBox(height: 4),
               Text(
@@ -489,7 +548,7 @@ class _TextReadingPageState extends ConsumerState<TextReadingPage> {
     ];
   }
 
-  List<Widget> _readingBody() {
+  List<Widget> _readingBody(SavedReadingTerms savedTerms) {
     final paragraphs = readingParagraphs(_text.content);
     return [
       for (var i = 0; i < paragraphs.length; i++) ...[
@@ -498,6 +557,7 @@ class _TextReadingPageState extends ConsumerState<TextReadingPage> {
           scope: 'body',
           paragraphIndex: i,
           paragraph: paragraphs[i],
+          savedTerms: savedTerms,
         ),
       ],
     ];
@@ -507,6 +567,11 @@ class _TextReadingPageState extends ConsumerState<TextReadingPage> {
   Widget build(BuildContext context) {
     final isRead =
         ref.watch(libraryControllerProvider).value?.isRead(_text.id) ?? false;
+    final savedTerms = SavedReadingTerms([
+      for (final entry
+          in ref.watch(vocabularyControllerProvider).value ?? const [])
+        if (entry.language == _text.language) entry.term,
+    ]);
 
     return Scaffold(
       backgroundColor: AppColors.backgroundMuted,
@@ -671,10 +736,11 @@ class _TextReadingPageState extends ConsumerState<TextReadingPage> {
                     ),
                     const SizedBox(height: AppSpacing.lg),
                     if (_showInlineTranslation)
-                      ..._inlineTranslationBody(context)
+                      ..._inlineTranslationBody(savedTerms)
                     else
-                      ..._readingBody(),
-                    if (_showInlineTranslation && _translationError != null) ...[
+                      ..._readingBody(savedTerms),
+                    if (_showInlineTranslation &&
+                        _translationError != null) ...[
                       const SizedBox(height: AppSpacing.md),
                       Text(
                         _translationError!,
@@ -701,7 +767,7 @@ class _TextReadingPageState extends ConsumerState<TextReadingPage> {
                           child: Text(
                             _generatingQuestions
                                 ? 'Gerando…'
-                                : 'Gerar perguntas com IA',
+                                : 'LIA gera perguntas',
                           ),
                         ),
                       ),
@@ -932,9 +998,9 @@ class _AudioPlayerCard extends StatelessWidget {
               ),
               Text(
                 '${rate.toStringAsFixed(2)}x',
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: AppColors.heading,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.labelLarge?.copyWith(color: AppColors.heading),
               ),
               IconButton(
                 visualDensity: VisualDensity.compact,
@@ -961,9 +1027,9 @@ class _AudioPlayerCard extends StatelessWidget {
                   ),
                   child: Text(
                     voiceGender == 'female' ? 'Voz ♀' : 'Voz ♂',
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: AppColors.heading,
-                    ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.labelMedium?.copyWith(color: AppColors.heading),
                   ),
                 ),
               ),
@@ -1124,7 +1190,8 @@ class _SaveVocabFromTextSheetState
           );
       if (result == null) {
         setState(
-          () => _error = 'Não foi possível preencher com IA. Tente novamente.',
+          () =>
+              _error = 'A LIA não conseguiu preencher agora. Tente novamente.',
         );
         return;
       }
@@ -1147,7 +1214,7 @@ class _SaveVocabFromTextSheetState
       });
     } catch (_) {
       setState(
-        () => _error = 'Não foi possível preencher com IA. Tente novamente.',
+        () => _error = 'A LIA não conseguiu preencher agora. Tente novamente.',
       );
     } finally {
       if (mounted) setState(() => _enriching = false);
@@ -1270,7 +1337,7 @@ class _SaveVocabFromTextSheetState
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(LucideIcons.astroid, size: 18),
-              label: const Text('Preencher com IA'),
+              label: const Text('LIA preenche'),
             ),
             if (_partOfSpeech != null) ...[
               const SizedBox(height: 8),

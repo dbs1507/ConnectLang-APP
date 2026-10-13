@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_lucide/flutter_lucide.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 
+import '../../core/audio/tts_audio_cache.dart';
 import '../dictation/models/dictation_score.dart';
 import 'models/placement_item.dart';
 import 'models/placement_result.dart';
@@ -79,8 +81,11 @@ class PlacementSessionPage extends ConsumerStatefulWidget {
 class _PlacementSessionPageState extends ConsumerState<PlacementSessionPage> {
   final _answerController = TextEditingController();
   final _player = AudioPlayer();
-  final Map<String, String> _audioUrlCache = {};
   final List<_ReviewEntry> _reviewLog = [];
+  Future<void>? _audioWarm;
+  Future<void> _playerChain = Future<void>.value();
+  int _audioGeneration = 0;
+  String? _audioReadyItemId;
 
   late PlacementItem _item;
   late String _sessionId;
@@ -114,6 +119,7 @@ class _PlacementSessionPageState extends ConsumerState<PlacementSessionPage> {
     _sessionId = widget.initial.sessionId;
     _language = widget.initial.language;
     _currentCefr = widget.initial.currentCefr ?? _item.cefr;
+    _scheduleAudioWarm();
   }
 
   @override
@@ -123,33 +129,82 @@ class _PlacementSessionPageState extends ConsumerState<PlacementSessionPage> {
     super.dispose();
   }
 
+  String get _placementAudioText {
+    final spoken = _item.audioText?.trim() ?? '';
+    if (spoken.isNotEmpty) return spoken;
+    return _item.prompt.trim();
+  }
+
+  void _scheduleAudioWarm() {
+    if (!_item.needsAudio) return;
+    final text = _placementAudioText;
+    if (text.isEmpty) return;
+    final generation = ++_audioGeneration;
+    final item = _item;
+    final preset = item.audioUrl;
+    final cache = ref.read(ttsAudioCacheProvider);
+    final repo = ref.read(placementRepositoryProvider);
+    final fileFuture = cache.ensureFile(
+      text: text,
+      language: item.language,
+      resolveUrl: () async {
+        if (preset != null && preset.isNotEmpty) return preset;
+        return repo.fetchAudioUrl(text: text, language: item.language);
+      },
+    );
+    final job = _setWarmFile(fileFuture, generation, item.id);
+    _audioWarm = job;
+    unawaited(
+      job.then(
+        (_) {},
+        onError: (_, _) {
+          if (generation == _audioGeneration) _audioWarm = null;
+        },
+      ),
+    );
+  }
+
+  Future<void> _setWarmFile(
+    Future<File> fileFuture,
+    int generation,
+    String itemId,
+  ) {
+    _playerChain = _playerChain.catchError((_) {}).then((_) async {
+      final file = await fileFuture;
+      if (!mounted || generation != _audioGeneration) return;
+      await _player.setFilePath(file.path);
+      if (!mounted || generation != _audioGeneration) return;
+      _audioReadyItemId = itemId;
+    });
+    return _playerChain;
+  }
+
   Future<void> _playAudio() async {
+    if (_audioReadyItemId == _item.id && _player.audioSource != null) {
+      await _player.seek(Duration.zero);
+      unawaited(_player.play());
+      return;
+    }
     setState(() {
       _loadingAudio = true;
       _audioError = null;
     });
     try {
-      var url = _audioUrlCache[_item.id];
-      if (url == null) {
-        final text =
-            (_item.audioText?.isNotEmpty == true
-                ? _item.audioText
-                : _item.prompt) ??
-            '';
-        url = await ref
-            .read(placementRepositoryProvider)
-            .fetchAudioUrl(text: text, language: _item.language);
-        if (url != null) _audioUrlCache[_item.id] = url;
-      }
-      if (url == null) {
+      if (_audioWarm == null) _scheduleAudioWarm();
+      await _audioWarm;
+      if (!mounted) return;
+      if (_audioReadyItemId != _item.id) {
         setState(() => _audioError = 'Não foi possível gerar o áudio.');
         return;
       }
-      await _player.setUrl(url);
       await _player.seek(Duration.zero);
       // `play()` só resolve quando a faixa termina (ou é interrompida) —
       // não podemos aguardar aqui ou o botão fica travado até o fim do áudio.
       unawaited(_player.play());
+    } on TtsAudioUnavailable {
+      if (mounted) {
+        setState(() => _audioError = 'Não foi possível gerar o áudio.');
+      }
     } catch (_) {
       if (mounted) {
         setState(() => _audioError = 'Não foi possível tocar o áudio.');
@@ -319,7 +374,7 @@ class _PlacementSessionPageState extends ConsumerState<PlacementSessionPage> {
       });
       return;
     }
-    _player.pause();
+    unawaited(_player.stop());
     setState(() {
       _item = result.item!;
       _questionNumber += 1;
@@ -336,6 +391,8 @@ class _PlacementSessionPageState extends ConsumerState<PlacementSessionPage> {
       _answerController.clear();
       _audioError = null;
     });
+    _audioReadyItemId = null;
+    _scheduleAudioWarm();
   }
 
   @override
@@ -495,7 +552,10 @@ class _PlacementSessionPageState extends ConsumerState<PlacementSessionPage> {
           children: [
             Row(
               children: [
-                Icon(ok ? LucideIcons.circle_check : LucideIcons.circle_x, color: color),
+                Icon(
+                  ok ? LucideIcons.circle_check : LucideIcons.circle_x,
+                  color: color,
+                ),
                 const SizedBox(width: 8),
                 Text(
                   _freeTextSubmitted

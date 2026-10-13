@@ -196,6 +196,11 @@ class _SubscriberHomeShellState extends ConsumerState<SubscriberHomeShell> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(currentUserIdProvider, (previous, next) {
+      if (previous == next) return;
+      if (previous == null) return;
+      _bootstrap();
+    });
     return Scaffold(
       backgroundColor: Colors.transparent,
       extendBody: false,

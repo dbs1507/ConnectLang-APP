@@ -99,6 +99,71 @@ List<String> readingParagraphs(String content) {
   return splitReadingParagraphs(plainReadingContent(content));
 }
 
+String normalizeReadingTerm(String text) {
+  return text.trim().toLowerCase().replaceAll(
+    RegExp(r'^[\p{P}\p{S}]+|[\p{P}\p{S}]+$', unicode: true),
+    '',
+  );
+}
+
+class SavedReadingTerms {
+  SavedReadingTerms(Iterable<String> terms)
+    : words = {},
+      phrases = [] {
+    for (final term in terms) {
+      final parts = [
+        for (final part in term.trim().split(RegExp(r'\s+')))
+          normalizeReadingTerm(part),
+      ].where((part) => part.isNotEmpty).toList();
+      if (parts.length == 1) {
+        words.add(parts.single);
+      } else if (parts.length > 1) {
+        phrases.add(parts);
+      }
+    }
+    phrases.sort((a, b) => b.length.compareTo(a.length));
+  }
+
+  final Set<String> words;
+  final List<List<String>> phrases;
+
+  Set<int> markedTokenIndexes(List<ReadingToken> tokens) {
+    if (words.isEmpty && phrases.isEmpty) return const {};
+    final wordIndexes = [
+      for (var i = 0; i < tokens.length; i++)
+        if (tokens[i].isWord) i,
+    ];
+    final norms = [
+      for (final index in wordIndexes) normalizeReadingTerm(tokens[index].text),
+    ];
+    final marked = <int>{};
+
+    for (final phrase in phrases) {
+      if (phrase.isEmpty || phrase.length > norms.length) continue;
+      for (var start = 0; start <= norms.length - phrase.length; start++) {
+        var matches = true;
+        for (var k = 0; k < phrase.length; k++) {
+          if (norms[start + k] != phrase[k]) {
+            matches = false;
+            break;
+          }
+        }
+        if (!matches) continue;
+        for (var k = 0; k < phrase.length; k++) {
+          marked.add(wordIndexes[start + k]);
+        }
+      }
+    }
+
+    for (var i = 0; i < norms.length; i++) {
+      if (norms[i].isNotEmpty && words.contains(norms[i])) {
+        marked.add(wordIndexes[i]);
+      }
+    }
+    return marked;
+  }
+}
+
 ReadingSelection? selectionFromTap({
   required ReadingSelection? current,
   required String scope,
@@ -214,12 +279,14 @@ class TappableReadingParagraph extends StatelessWidget {
     required this.onLongPressToken,
     this.selectedStart,
     this.selectedEnd,
+    this.savedTerms,
   });
 
   final String text;
   final TextStyle style;
   final int? selectedStart;
   final int? selectedEnd;
+  final SavedReadingTerms? savedTerms;
   final ValueChanged<int> onTapToken;
   final ValueChanged<int> onLongPressToken;
 
@@ -232,6 +299,7 @@ class TappableReadingParagraph extends StatelessWidget {
     final to = selectedStart == null || selectedEnd == null
         ? null
         : (selectedStart! < selectedEnd! ? selectedEnd! : selectedStart!);
+    final saved = savedTerms?.markedTokenIndexes(tokens) ?? const <int>{};
 
     return Text.rich(
       TextSpan(
@@ -257,6 +325,8 @@ class TappableReadingParagraph extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: from != null && to != null && i >= from && i <= to
                           ? AppColors.primary.withValues(alpha: 0.16)
+                          : saved.contains(i)
+                          ? AppColors.lia
                           : Colors.transparent,
                       borderRadius: BorderRadius.circular(4),
                     ),

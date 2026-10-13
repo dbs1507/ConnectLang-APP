@@ -21,8 +21,10 @@ final notebookControllerProvider =
 
 class NotebookController extends AsyncNotifier<List<NotebookEntry>> {
   @override
-  Future<List<NotebookEntry>> build() {
-    return ref.read(notebookRepositoryProvider).fetchAll();
+  Future<List<NotebookEntry>> build() async {
+    final userId = ref.watch(currentUserIdProvider);
+    if (userId == null) return const <NotebookEntry>[];
+    return ref.watch(notebookRepositoryProvider).fetchAll();
   }
 
   Future<void> addEntry({

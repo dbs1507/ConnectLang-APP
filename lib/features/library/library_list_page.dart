@@ -22,6 +22,8 @@ import 'text_reading_page.dart';
 
 enum _LibrarySection { curated, temporary, personal }
 
+enum _ReadFilter { unread, read }
+
 const _libraryCardRadius = BorderRadius.all(Radius.circular(16));
 const _libraryBodyPadding = EdgeInsets.fromLTRB(
   AppSpacing.xl,
@@ -50,6 +52,8 @@ class _LibraryListPageState extends ConsumerState<LibraryListPage> {
   String? _openedTextId;
   String? _languageFilter;
   String? _cefrFilter;
+  String? _tagFilter;
+  _ReadFilter? _readFilter;
   var _didInitLanguage = false;
 
   @override
@@ -128,7 +132,16 @@ class _LibraryListPageState extends ConsumerState<LibraryListPage> {
       for (final text in source)
         if ((_languageFilter == null ||
                 text.language.toUpperCase() == _languageFilter) &&
-            (_cefrFilter == null || text.cefr == _cefrFilter))
+            (_cefrFilter == null || text.cefr == _cefrFilter) &&
+            (_tagFilter == null ||
+                text.tags.any(
+                  (tag) => tag.trim().toLowerCase() == _tagFilter,
+                )) &&
+            switch (_readFilter) {
+              null => true,
+              _ReadFilter.read => state.isRead(text.id),
+              _ReadFilter.unread => !state.isRead(text.id),
+            })
           text,
     ];
   }
@@ -160,6 +173,22 @@ class _LibraryListPageState extends ConsumerState<LibraryListPage> {
       add(code);
     }
     return out;
+  }
+
+  List<String> _tagOptions(LibraryState state) {
+    final source = switch (_section) {
+      _LibrarySection.curated => state.texts,
+      _LibrarySection.temporary => state.temporaryTexts,
+      _LibrarySection.personal => state.personalTexts,
+    };
+    final tags = <String>{
+      for (final text in source)
+        for (final tag in text.tags)
+          if (tag.trim().isNotEmpty && !tag.trim().startsWith('__'))
+            tag.trim().toLowerCase(),
+    };
+    final sorted = tags.toList()..sort();
+    return sorted;
   }
 
   List<String> _cefrOptions(LibraryState state) {
@@ -237,6 +266,7 @@ class _LibraryListPageState extends ConsumerState<LibraryListPage> {
                   final texts = _textsFor(libraryState);
                   final languages = _languageOptions(libraryState);
                   final cefrs = _cefrOptions(libraryState);
+                  final tags = _tagOptions(libraryState);
                   final mine =
                       ref.watch(vocabularyControllerProvider).value ??
                       const <VocabularyEntry>[];
@@ -245,59 +275,109 @@ class _LibraryListPageState extends ConsumerState<LibraryListPage> {
                       const <String>[];
                   final groups = _groupsFor(texts);
                   final filtered =
-                      _languageFilter != null || _cefrFilter != null;
+                      _languageFilter != null ||
+                      _cefrFilter != null ||
+                      _tagFilter != null ||
+                      _readFilter != null;
 
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(
-                          AppSpacing.xl,
-                          AppSpacing.sm,
-                          AppSpacing.xl,
-                          AppSpacing.md,
+                        padding: const EdgeInsets.only(
+                          top: AppSpacing.sm,
+                          bottom: AppSpacing.md,
                         ),
-                        child: Row(
-                          children: [
-                            if (languages.isNotEmpty)
-                              AppFilterMenu<String?>(
-                                label: 'Idioma',
-                                selected: _languageFilter,
-                                onSelected: (value) => setState(
-                                  () => _languageFilter = value,
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.xl,
+                          ),
+                          child: Row(
+                            children: [
+                              if (languages.isNotEmpty) ...[
+                                AppFilterMenu<String?>(
+                                  label: 'Idioma',
+                                  selected: _languageFilter,
+                                  onSelected: (value) => setState(
+                                    () => _languageFilter = value,
+                                  ),
+                                  options: [
+                                    const AppChoiceOption(
+                                      value: null,
+                                      label: 'Todos',
+                                    ),
+                                    for (final code in languages)
+                                      AppChoiceOption(
+                                        value: code,
+                                        label: taughtLanguages[code] ?? code,
+                                      ),
+                                  ],
                                 ),
-                                options: [
-                                  const AppChoiceOption(
-                                    value: null,
-                                    label: 'Todos',
-                                  ),
-                                  for (final code in languages)
-                                    AppChoiceOption(
-                                      value: code,
-                                      label: taughtLanguages[code] ?? code,
+                                const SizedBox(width: AppSpacing.sm),
+                              ],
+                              if (cefrs.isNotEmpty) ...[
+                                AppFilterMenu<String?>(
+                                  label: 'Nível',
+                                  selected: _cefrFilter,
+                                  onSelected: (value) =>
+                                      setState(() => _cefrFilter = value),
+                                  options: [
+                                    const AppChoiceOption(
+                                      value: null,
+                                      label: 'Todos',
                                     ),
-                                ],
-                              ),
-                            const Spacer(),
-                            if (cefrs.isNotEmpty)
-                              AppFilterMenu<String?>(
-                                label: 'Nível',
-                                selected: _cefrFilter,
+                                    for (final level in cefrs)
+                                      AppChoiceOption(
+                                        value: level,
+                                        label: level,
+                                      ),
+                                  ],
+                                ),
+                                const SizedBox(width: AppSpacing.sm),
+                              ],
+                              AppFilterMenu<_ReadFilter?>(
+                                label: 'Leitura',
+                                selected: _readFilter,
                                 onSelected: (value) =>
-                                    setState(() => _cefrFilter = value),
-                                options: [
-                                  const AppChoiceOption(
+                                    setState(() => _readFilter = value),
+                                options: const [
+                                  AppChoiceOption(
                                     value: null,
                                     label: 'Todos',
                                   ),
-                                  for (final level in cefrs)
-                                    AppChoiceOption(
-                                      value: level,
-                                      label: level,
-                                    ),
+                                  AppChoiceOption(
+                                    value: _ReadFilter.unread,
+                                    label: 'Não lidos',
+                                  ),
+                                  AppChoiceOption(
+                                    value: _ReadFilter.read,
+                                    label: 'Lidos',
+                                  ),
                                 ],
                               ),
-                          ],
+                              if (tags.isNotEmpty) ...[
+                                const SizedBox(width: AppSpacing.sm),
+                                AppFilterMenu<String?>(
+                                  label: 'Categoria',
+                                  selected: _tagFilter,
+                                  onSelected: (value) =>
+                                      setState(() => _tagFilter = value),
+                                  options: [
+                                    const AppChoiceOption(
+                                      value: null,
+                                      label: 'Todas',
+                                    ),
+                                    for (final tag in tags)
+                                      AppChoiceOption(
+                                        value: tag,
+                                        label: _prettyTag(tag),
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ],
+                          ),
                         ),
                       ),
                       Expanded(
@@ -393,6 +473,14 @@ class _LibraryListPageState extends ConsumerState<LibraryListPage> {
         'Nenhum texto pessoal ainda. Salve um temporário pra guardar.',
     };
   }
+}
+
+String _prettyTag(String tag) {
+  final words = tag.replaceAll('_', ' ').trim().split(RegExp(r'\s+'));
+  return [
+    for (final word in words)
+      if (word.isNotEmpty) '${word[0].toUpperCase()}${word.substring(1)}',
+  ].join(' ');
 }
 
 class _LibraryHeaderButton extends StatelessWidget {

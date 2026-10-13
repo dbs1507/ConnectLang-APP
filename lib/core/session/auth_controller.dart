@@ -17,6 +17,12 @@ final authControllerProvider = AsyncNotifierProvider<AuthController, AppUser?>(
   AuthController.new,
 );
 
+/// Id da sessão atual. Providers de dados do aluno observam isso para não
+/// reutilizar a lista da conta anterior ao trocar o login.
+final currentUserIdProvider = Provider<String?>((ref) {
+  return ref.watch(authControllerProvider.select((state) => state.value?.id));
+});
+
 class AuthController extends AsyncNotifier<AppUser?> {
   StreamSubscription<AuthState>? _authSub;
   bool _manualLoginInFlight = false;

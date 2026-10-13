@@ -53,7 +53,16 @@ final libraryControllerProvider =
 class LibraryController extends AsyncNotifier<LibraryState> {
   @override
   Future<LibraryState> build() async {
-    final repo = ref.read(libraryRepositoryProvider);
+    final userId = ref.watch(currentUserIdProvider);
+    if (userId == null) {
+      return const LibraryState(
+        texts: [],
+        temporaryTexts: [],
+        personalTexts: [],
+        readTextIds: <String>{},
+      );
+    }
+    final repo = ref.watch(libraryRepositoryProvider);
     final results = await Future.wait([
       repo.fetchTexts(),
       repo.fetchTemporaryTexts(),

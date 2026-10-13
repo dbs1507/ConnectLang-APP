@@ -121,4 +121,25 @@ void main() {
     );
     expect(selected.text, 'They went to the park yesterday.');
   });
+
+  test('saved words stay highlighted across punctuation and case', () {
+    const paragraph = 'They saw a beautiful Rainbow yesterday.';
+    final tokens = tokenizeReadingParagraph(paragraph);
+    final saved = SavedReadingTerms(['rainbow', 'SAW']);
+    expect(
+      saved.markedTokenIndexes(tokens).map((i) => tokens[i].text).toSet(),
+      {'saw', 'Rainbow'},
+    );
+  });
+
+  test('saved phrases highlight every word of the match', () {
+    const paragraph = 'They went to the park yesterday.';
+    final tokens = tokenizeReadingParagraph(paragraph);
+    final saved = SavedReadingTerms(['went to the park']);
+    final marked = saved
+        .markedTokenIndexes(tokens)
+        .map((i) => normalizeReadingTerm(tokens[i].text))
+        .toList();
+    expect(marked, ['went', 'to', 'the', 'park']);
+  });
 }

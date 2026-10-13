@@ -217,6 +217,7 @@ class _SubscriberProfilePageState extends ConsumerState<SubscriberProfilePage> {
                 0,
               ),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   _AccountCard(
                     user: user,
