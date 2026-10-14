@@ -86,6 +86,10 @@ class _PlacementSessionPageState extends ConsumerState<PlacementSessionPage> {
   Future<void> _playerChain = Future<void>.value();
   int _audioGeneration = 0;
   String? _audioReadyItemId;
+  StreamSubscription<PlayerState>? _playerSub;
+  bool _playing = false;
+  double _playbackRate = 1;
+  var _loop = false;
 
   late PlacementItem _item;
   late String _sessionId;
@@ -119,14 +123,42 @@ class _PlacementSessionPageState extends ConsumerState<PlacementSessionPage> {
     _sessionId = widget.initial.sessionId;
     _language = widget.initial.language;
     _currentCefr = widget.initial.currentCefr ?? _item.cefr;
+    _playerSub = _player.playerStateStream.listen((state) {
+      if (!mounted) return;
+      setState(() {
+        _playing =
+            state.playing &&
+            (state.processingState != ProcessingState.completed || _loop);
+      });
+    });
     _scheduleAudioWarm();
   }
 
   @override
   void dispose() {
+    _playerSub?.cancel();
     _answerController.dispose();
     _player.dispose();
     super.dispose();
+  }
+
+  Future<void> _applyLoopMode() async {
+    try {
+      await _player.setLoopMode(_loop ? LoopMode.one : LoopMode.off);
+    } catch (_) {}
+  }
+
+  Future<void> _toggleLoop() async {
+    setState(() => _loop = !_loop);
+    await _applyLoopMode();
+  }
+
+  Future<void> _nudgeRate(double delta) async {
+    final next = (_playbackRate + delta).clamp(0.5, 1.75);
+    setState(() => _playbackRate = double.parse(next.toStringAsFixed(2)));
+    try {
+      await _player.setSpeed(_playbackRate);
+    } catch (_) {}
   }
 
   String get _placementAudioText {
@@ -175,13 +207,24 @@ class _PlacementSessionPageState extends ConsumerState<PlacementSessionPage> {
       await _player.setFilePath(file.path);
       if (!mounted || generation != _audioGeneration) return;
       _audioReadyItemId = itemId;
+      try {
+        await _player.setSpeed(_playbackRate);
+      } catch (_) {}
+      await _applyLoopMode();
     });
     return _playerChain;
   }
 
   Future<void> _playAudio() async {
+    if (_playing) {
+      await _player.pause();
+      return;
+    }
     if (_audioReadyItemId == _item.id && _player.audioSource != null) {
-      await _player.seek(Duration.zero);
+      if (_player.processingState == ProcessingState.completed) {
+        await _player.seek(Duration.zero);
+      }
+      await _applyLoopMode();
       unawaited(_player.play());
       return;
     }
@@ -198,6 +241,10 @@ class _PlacementSessionPageState extends ConsumerState<PlacementSessionPage> {
         return;
       }
       await _player.seek(Duration.zero);
+      try {
+        await _player.setSpeed(_playbackRate);
+      } catch (_) {}
+      await _applyLoopMode();
       // `play()` só resolve quando a faixa termina (ou é interrompida) —
       // não podemos aguardar aqui ou o botão fica travado até o fim do áudio.
       unawaited(_player.play());
@@ -425,18 +472,15 @@ class _PlacementSessionPageState extends ConsumerState<PlacementSessionPage> {
               ),
               if (_item.needsAudio) ...[
                 const SizedBox(height: 16),
-                Center(
-                  child: FilledButton.icon(
-                    onPressed: _loadingAudio ? null : _playAudio,
-                    icon: _loadingAudio
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(LucideIcons.play),
-                    label: const Text('Ouvir áudio'),
-                  ),
+                _PlacementAudioCard(
+                  player: _player,
+                  loading: _loadingAudio,
+                  playing: _playing,
+                  playbackRate: _playbackRate,
+                  looping: _loop,
+                  onToggle: _playAudio,
+                  onNudgeRate: _nudgeRate,
+                  onToggleLoop: _toggleLoop,
                 ),
                 if (_audioError != null) ...[
                   const SizedBox(height: 8),
@@ -601,6 +645,164 @@ class _PlacementSessionPageState extends ConsumerState<PlacementSessionPage> {
                     ? 'Ver meu nível'
                     : 'Próxima pergunta',
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _formatPlacementAudioDuration(Duration duration) {
+  final minutes = duration.inMinutes;
+  final seconds = duration.inSeconds % 60;
+  return '$minutes:${seconds.toString().padLeft(2, '0')}';
+}
+
+class _PlacementAudioCard extends StatelessWidget {
+  const _PlacementAudioCard({
+    required this.player,
+    required this.loading,
+    required this.playing,
+    required this.playbackRate,
+    required this.looping,
+    required this.onToggle,
+    required this.onNudgeRate,
+    required this.onToggleLoop,
+  });
+
+  final AudioPlayer player;
+  final bool loading;
+  final bool playing;
+  final double playbackRate;
+  final bool looping;
+  final VoidCallback onToggle;
+  final ValueChanged<double> onNudgeRate;
+  final VoidCallback onToggleLoop;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Theme.of(context).dividerColor),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Material(
+                  color: Theme.of(context).colorScheme.primary,
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: loading ? null : onToggle,
+                    child: SizedBox(
+                      width: 40,
+                      height: 40,
+                      child: loading
+                          ? const Padding(
+                              padding: EdgeInsets.all(10),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : Icon(
+                              playing ? LucideIcons.pause : LucideIcons.play,
+                              color: Colors.white,
+                            ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: StreamBuilder<Duration>(
+                    stream: player.positionStream,
+                    builder: (context, snapshot) {
+                      final position = snapshot.data ?? Duration.zero;
+                      final duration = player.duration ?? Duration.zero;
+                      final maxMs = duration.inMilliseconds
+                          .toDouble()
+                          .clamp(1, double.infinity)
+                          .toDouble();
+                      final value = position.inMilliseconds
+                          .toDouble()
+                          .clamp(0, maxMs)
+                          .toDouble();
+                      return Row(
+                        children: [
+                          Expanded(
+                            child: SliderTheme(
+                              data: SliderTheme.of(context).copyWith(
+                                trackHeight: 3,
+                                thumbShape: const RoundSliderThumbShape(
+                                  enabledThumbRadius: 6,
+                                ),
+                                overlayShape: const RoundSliderOverlayShape(
+                                  overlayRadius: 12,
+                                ),
+                              ),
+                              child: Slider(
+                                value: value,
+                                max: maxMs,
+                                onChanged: duration == Duration.zero
+                                    ? null
+                                    : (next) => player.seek(
+                                        Duration(milliseconds: next.round()),
+                                      ),
+                              ),
+                            ),
+                          ),
+                          Text(
+                            _formatPlacementAudioDuration(
+                              duration == Duration.zero ? position : duration,
+                            ),
+                            style: Theme.of(context).textTheme.labelMedium,
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+            Row(
+              children: [
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  tooltip: 'Mais devagar',
+                  onPressed: playbackRate <= 0.5
+                      ? null
+                      : () => onNudgeRate(-0.1),
+                  icon: const Icon(LucideIcons.minus, size: 18),
+                ),
+                Text('${playbackRate.toStringAsFixed(2)}x'),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  tooltip: 'Mais rápido',
+                  onPressed: playbackRate >= 1.75
+                      ? null
+                      : () => onNudgeRate(0.1),
+                  icon: const Icon(LucideIcons.plus, size: 18),
+                ),
+                const Spacer(),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  tooltip: looping ? 'Repetir: ligado' : 'Repetir: desligado',
+                  onPressed: onToggleLoop,
+                  icon: Icon(
+                    LucideIcons.repeat,
+                    size: 18,
+                    color: looping
+                        ? Theme.of(context).colorScheme.primary
+                        : null,
+                  ),
+                ),
+              ],
             ),
           ],
         ),

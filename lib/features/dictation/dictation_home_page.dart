@@ -74,6 +74,8 @@ int _nearestSessionSize(int value) {
 class _DictationHomePageState extends ConsumerState<DictationHomePage> {
   late String _language = widget.initialLanguage ?? 'EN';
   late int _sessionSize = _nearestSessionSize(widget.initialCount ?? 10);
+  String _voiceGender = 'female';
+  String _responseMode = 'write';
   late bool _calibrated = widget.autoStartCalibrated;
   late final String? _cefr = widget.initialCefr;
   late final List<String> _focusTags = widget.initialFocusTags;
@@ -149,6 +151,8 @@ class _DictationHomePageState extends ConsumerState<DictationHomePage> {
             items: items,
             calibrated: _calibrated,
             focusTags: _focusTags,
+            voiceGender: _voiceGender,
+            responseMode: _responseMode,
           ),
         ),
       );
@@ -255,6 +259,40 @@ class _DictationHomePageState extends ConsumerState<DictationHomePage> {
                           const SizedBox(height: AppSpacing.sm),
                           Text(_focusHeadline!, style: textTheme.bodyMedium),
                         ],
+                        const SizedBox(height: AppSpacing.lg),
+                        Text('Voz', style: textTheme.labelMedium),
+                        const SizedBox(height: AppSpacing.sm),
+                        AppChoiceChips<String>(
+                          padding: EdgeInsets.zero,
+                          selected: _voiceGender,
+                          onSelected: _loading
+                              ? (_) {}
+                              : (value) =>
+                                    setState(() => _voiceGender = value),
+                          options: const [
+                            AppChoiceOption(
+                              value: 'female',
+                              label: 'Feminina',
+                            ),
+                            AppChoiceOption(value: 'male', label: 'Masculina'),
+                          ],
+                        ),
+                        const SizedBox(height: AppSpacing.lg),
+                        Text('Modo de resposta', style: textTheme.labelMedium),
+                        const SizedBox(height: AppSpacing.sm),
+                        AppChoiceChips<String>(
+                          padding: EdgeInsets.zero,
+                          selected: _responseMode,
+                          onSelected: _loading
+                              ? (_) {}
+                              : (value) =>
+                                    setState(() => _responseMode = value),
+                          options: const [
+                            AppChoiceOption(value: 'write', label: 'Digitar'),
+                            AppChoiceOption(value: 'speak', label: 'Falar'),
+                            AppChoiceOption(value: 'mixed', label: 'Misto'),
+                          ],
+                        ),
                         if (_error != null) ...[
                           const SizedBox(height: AppSpacing.sm),
                           Text(

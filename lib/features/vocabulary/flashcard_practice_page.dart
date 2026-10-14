@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_lucide/flutter_lucide.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:speech_to_text/speech_recognition_error.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
 import '../../design_system/theme/app_colors.dart';
@@ -76,9 +77,12 @@ class _FlashcardPracticePageState extends ConsumerState<FlashcardPracticePage> {
   bool? _typedOk;
   int _ratedCount = 0;
   final _answerController = TextEditingController();
-  final _speech = SpeechToText();
+  SpeechToText _speech = SpeechToText();
   bool _speechReady = false;
   bool _listening = false;
+  bool _retriedListen = false;
+  bool _acceptListeningStatus = true;
+  String? _listenLanguage;
   String _heard = '';
   String? _speechError;
 
@@ -138,48 +142,130 @@ class _FlashcardPracticePageState extends ConsumerState<FlashcardPracticePage> {
       return;
     }
     setState(() => _speechError = null);
-    if (!_speechReady) {
-      _speechReady = await _speech.initialize(
-        onError: (_) {
+    await _resetSpeechRecognizer();
+    final ready = await _ensureSpeech();
+    if (!ready || !mounted) return;
+    _retriedListen = false;
+    _heard = '';
+    await _beginListen(language);
+  }
+
+  Future<bool> _ensureSpeech() async {
+    if (_speechReady) return true;
+    _speechReady = await _speech.initialize(
+      onError: _onSpeechError,
+      onStatus: (status) {
+        if (!mounted) return;
+        final listening = status == 'listening';
+        if (listening && !_acceptListeningStatus) return;
+        if (!listening) _acceptListeningStatus = false;
+        if (_listening != listening) setState(() => _listening = listening);
+      },
+      options: [SpeechToText.androidNoBluetooth],
+    );
+    if (!_speechReady && mounted) {
+      setState(
+        () => _speechError = 'O microfone não está disponível neste aparelho.',
+      );
+    }
+    return _speechReady;
+  }
+
+  Future<void> _onSpeechError(SpeechRecognitionError error) async {
+    debugPrint('speech: ${error.errorMsg}');
+    if (!mounted) return;
+    final code = error.errorMsg;
+    _acceptListeningStatus = false;
+    if ((code == 'error_no_match' || code == 'error_speech_timeout') &&
+        _heard.trim().isNotEmpty) {
+      setState(() => _listening = false);
+      return;
+    }
+    final canRetry =
+        !_retriedListen &&
+        _listenLanguage != null &&
+        (code == 'error_client' ||
+            code == 'error_busy' ||
+            code == 'error_audio_error');
+    if (canRetry) {
+      _retriedListen = true;
+      await _resetSpeechRecognizer();
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      if (!mounted) return;
+      final ready = await _ensureSpeech();
+      if (!ready || !mounted) return;
+      await _beginListen(_listenLanguage!);
+      return;
+    }
+    if (_speech.isListening) {
+      await _speech.cancel();
+    }
+    if (!mounted) return;
+    setState(() {
+      _listening = false;
+      _speechError = switch (code) {
+        'error_no_match' || 'error_speech_timeout' =>
+          'Não ouvi o termo. Toque no microfone e fale de novo.',
+        'error_network' ||
+        'error_network_timeout' ||
+        'error_server' ||
+        'error_server_disconnected' =>
+          'Sem conexão para reconhecer a fala. Tente de novo.',
+        'error_permission' =>
+          'Permita o microfone para o ConnectLang nas configurações do aparelho.',
+        'error_language_not_supported' || 'error_language_unavailable' =>
+          'Este aparelho não reconhece esse idioma na voz.',
+        _ => 'Não foi possível ouvir. Tente de novo.',
+      };
+    });
+  }
+
+  Future<void> _beginListen(String language) async {
+    _listenLanguage = language;
+    if (!mounted) return;
+    _acceptListeningStatus = true;
+    try {
+      await _speech.listen(
+        onResult: (result) {
           if (!mounted) return;
+          final words = result.recognizedWords.trim();
+          debugPrint('speech result: "$words" final=${result.finalResult}');
+          if (words.isEmpty) return;
           setState(() {
-            _listening = false;
-            _speechError = 'Não foi possível ouvir. Tente de novo.';
+            _heard = words;
+            _speechError = null;
           });
         },
-        onStatus: (status) {
-          if (!mounted) return;
-          final listening = status == 'listening';
-          if (_listening != listening) setState(() => _listening = listening);
-        },
+        listenOptions: SpeechListenOptions(
+          listenMode: ListenMode.dictation,
+          partialResults: true,
+          cancelOnError: false,
+          onDevice: false,
+          localeId: _localeIdFor(language),
+          listenFor: const Duration(seconds: 20),
+          pauseFor: const Duration(seconds: 4),
+        ),
       );
-      if (!_speechReady) {
-        if (mounted) {
-          setState(
-            () => _speechError =
-                'O microfone não está disponível neste aparelho.',
-          );
-        }
-        return;
-      }
+    } catch (error) {
+      debugPrint('speech listen failed: $error');
+      if (!mounted) return;
+      setState(() {
+        _listening = false;
+        _speechError = 'Não foi possível ouvir. Tente de novo.';
+      });
+      return;
     }
-    _heard = '';
-    final localeId = await _localeIdFor(language);
-    await _speech.listen(
-      onResult: (result) {
-        if (!mounted) return;
-        setState(() => _heard = result.recognizedWords.trim());
-      },
-      listenOptions: SpeechListenOptions(
-        listenMode: ListenMode.confirmation,
-        partialResults: true,
-        cancelOnError: true,
-        localeId: localeId,
-        listenFor: const Duration(seconds: 20),
-        pauseFor: const Duration(seconds: 3),
-      ),
-    );
     if (mounted) setState(() => _listening = _speech.isListening);
+  }
+
+  Future<void> _resetSpeechRecognizer() async {
+    if (_speechReady) {
+      await _speech.cancel();
+    }
+    _speech = SpeechToText();
+    _speechReady = false;
+    _listening = false;
+    _acceptListeningStatus = true;
   }
 
   Future<void> _stopListening() async {
@@ -189,24 +275,17 @@ class _FlashcardPracticePageState extends ConsumerState<FlashcardPracticePage> {
     _listening = false;
   }
 
-  Future<String?> _localeIdFor(String language) async {
-    final prefix = switch (language.toUpperCase()) {
-      'PT' => 'pt',
-      'ES' => 'es',
-      'FR' => 'fr',
-      'IT' => 'it',
-      'DE' => 'de',
-      'NL' => 'nl',
-      'SV' => 'sv',
-      _ => 'en',
+  String _localeIdFor(String language) {
+    return switch (language.toUpperCase()) {
+      'PT' => 'pt_BR',
+      'ES' => 'es_ES',
+      'FR' => 'fr_FR',
+      'IT' => 'it_IT',
+      'DE' => 'de_DE',
+      'NL' => 'nl_NL',
+      'SV' => 'sv_SE',
+      _ => 'en_US',
     };
-    final locales = await _speech.locales();
-    for (final locale in locales) {
-      if (locale.localeId.toLowerCase().startsWith(prefix)) {
-        return locale.localeId;
-      }
-    }
-    return null;
   }
 
   Future<void> _checkSpoken() async {
@@ -375,6 +454,18 @@ class _FlashcardPracticePageState extends ConsumerState<FlashcardPracticePage> {
                                 onPressed: () =>
                                     _toggleListening(entry.language),
                               ),
+                              if (_listening) ...[
+                                const SizedBox(height: AppSpacing.sm),
+                                Text('Ouvindo…', style: textTheme.bodyMedium),
+                              ],
+                              if (_heard.isNotEmpty) ...[
+                                const SizedBox(height: AppSpacing.sm),
+                                Text(
+                                  'Você disse: «$_heard»',
+                                  style: textTheme.bodyMedium,
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
                               if (_speechError != null) ...[
                                 const SizedBox(height: AppSpacing.sm),
                                 Text(
@@ -441,6 +532,15 @@ class _FlashcardPracticePageState extends ConsumerState<FlashcardPracticePage> {
                                       ? AppColors.success
                                       : AppColors.destructive,
                                 ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                            if (task == _CardTask.speak &&
+                                _heard.isNotEmpty) ...[
+                              const SizedBox(height: AppSpacing.sm),
+                              Text(
+                                'Você disse: «$_heard»',
+                                style: textTheme.bodyMedium,
                                 textAlign: TextAlign.center,
                               ),
                             ],
@@ -558,7 +658,7 @@ class _FlashcardSetupSheetState extends State<_FlashcardSetupSheet> {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-    return Padding(
+    return SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(
         AppSpacing.xl,
         0,

@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_lucide/flutter_lucide.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:speech_to_text/speech_recognition_error.dart';
+import 'package:speech_to_text/speech_to_text.dart';
 
 import '../../core/audio/tts_audio_cache.dart';
 import '../../design_system/components/feedback/lia_mark.dart';
@@ -31,11 +34,15 @@ class DictationSessionPage extends ConsumerStatefulWidget {
     required this.items,
     this.calibrated = false,
     this.focusTags = const [],
+    this.voiceGender = 'female',
+    this.responseMode = 'write',
   });
 
   final List<DictationItem> items;
   final bool calibrated;
   final List<String> focusTags;
+  final String voiceGender;
+  final String responseMode;
 
   @override
   ConsumerState<DictationSessionPage> createState() =>
@@ -79,11 +86,30 @@ class _DictationSessionPageState extends ConsumerState<DictationSessionPage> {
 
   String? _selectedText;
 
+  late final List<bool> _speakTasks;
+  SpeechToText _speech = SpeechToText();
+  bool _speechReady = false;
+  bool _listening = false;
+  bool _retriedListen = false;
+  bool _acceptListeningStatus = true;
+  String? _listenLanguage;
+  String? _speechError;
+
   DictationItem get _currentItem => widget.items[_index];
+
+  bool get _isSpeakTask {
+    if (widget.responseMode == 'speak') return true;
+    if (widget.responseMode != 'mixed') return false;
+    return _speakTasks[_index];
+  }
 
   @override
   void initState() {
     super.initState();
+    final random = math.Random();
+    _speakTasks = [
+      for (var i = 0; i < widget.items.length; i++) random.nextBool(),
+    ];
     _answerController.addListener(() => setState(() {}));
     _playerSub = _player.playerStateStream.listen((state) {
       if (!mounted) return;
@@ -101,7 +127,160 @@ class _DictationSessionPageState extends ConsumerState<DictationSessionPage> {
     _playerSub?.cancel();
     _answerController.dispose();
     _player.dispose();
+    unawaited(_speech.stop());
     super.dispose();
+  }
+
+  Future<void> _toggleListening() async {
+    if (_listening) {
+      await _stopListening();
+      if (mounted) setState(() {});
+      return;
+    }
+    setState(() => _speechError = null);
+    await _resetSpeechRecognizer();
+    final ready = await _ensureSpeech();
+    if (!ready || !mounted) return;
+    _retriedListen = false;
+    _answerController.clear();
+    await _beginListen(_currentItem.language);
+  }
+
+  Future<bool> _ensureSpeech() async {
+    if (_speechReady) return true;
+    _speechReady = await _speech.initialize(
+      onError: _onSpeechError,
+      onStatus: (status) {
+        if (!mounted) return;
+        final listening = status == 'listening';
+        if (listening && !_acceptListeningStatus) return;
+        if (!listening) _acceptListeningStatus = false;
+        if (_listening != listening) setState(() => _listening = listening);
+      },
+      options: [SpeechToText.androidNoBluetooth],
+    );
+    if (!_speechReady && mounted) {
+      setState(
+        () => _speechError = 'O microfone não está disponível neste aparelho.',
+      );
+    }
+    return _speechReady;
+  }
+
+  Future<void> _onSpeechError(SpeechRecognitionError error) async {
+    debugPrint('dictation speech: ${error.errorMsg}');
+    if (!mounted) return;
+    final code = error.errorMsg;
+    _acceptListeningStatus = false;
+    if ((code == 'error_no_match' || code == 'error_speech_timeout') &&
+        _answerController.text.trim().isNotEmpty) {
+      setState(() => _listening = false);
+      return;
+    }
+    final canRetry =
+        !_retriedListen &&
+        _listenLanguage != null &&
+        (code == 'error_client' ||
+            code == 'error_busy' ||
+            code == 'error_audio_error');
+    if (canRetry) {
+      _retriedListen = true;
+      await _resetSpeechRecognizer();
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      if (!mounted) return;
+      final ready = await _ensureSpeech();
+      if (!ready || !mounted) return;
+      await _beginListen(_listenLanguage!);
+      return;
+    }
+    if (_speech.isListening) {
+      await _speech.cancel();
+    }
+    if (!mounted) return;
+    setState(() {
+      _listening = false;
+      _speechError = switch (code) {
+        'error_no_match' || 'error_speech_timeout' =>
+          'Não ouvi a frase. Toque no microfone e fale de novo.',
+        'error_network' ||
+        'error_network_timeout' ||
+        'error_server' ||
+        'error_server_disconnected' =>
+          'Sem conexão para reconhecer a fala. Tente de novo.',
+        'error_permission' =>
+          'Permita o microfone para o ConnectLang nas configurações do aparelho.',
+        'error_language_not_supported' || 'error_language_unavailable' =>
+          'Este aparelho não reconhece esse idioma na voz.',
+        _ => 'Não foi possível ouvir. Tente de novo.',
+      };
+    });
+  }
+
+  Future<void> _beginListen(String language) async {
+    _listenLanguage = language;
+    if (!mounted) return;
+    _acceptListeningStatus = true;
+    try {
+      await _speech.listen(
+        onResult: (result) {
+          if (!mounted) return;
+          final words = result.recognizedWords.trim();
+          if (words.isEmpty) return;
+          setState(() {
+            _answerController.text = words;
+            _speechError = null;
+          });
+        },
+        listenOptions: SpeechListenOptions(
+          listenMode: ListenMode.dictation,
+          partialResults: true,
+          cancelOnError: false,
+          onDevice: false,
+          localeId: _speechLocaleIdFor(language),
+          listenFor: const Duration(seconds: 20),
+          pauseFor: const Duration(seconds: 4),
+        ),
+      );
+    } catch (error) {
+      debugPrint('dictation speech listen failed: $error');
+      if (!mounted) return;
+      setState(() {
+        _listening = false;
+        _speechError = 'Não foi possível ouvir. Tente de novo.';
+      });
+      return;
+    }
+    if (mounted) setState(() => _listening = _speech.isListening);
+  }
+
+  Future<void> _resetSpeechRecognizer() async {
+    if (_speechReady) {
+      await _speech.cancel();
+    }
+    _speech = SpeechToText();
+    _speechReady = false;
+    _listening = false;
+    _acceptListeningStatus = true;
+  }
+
+  Future<void> _stopListening() async {
+    if (_speechReady && _speech.isListening) {
+      await _speech.stop();
+    }
+    _listening = false;
+  }
+
+  String _speechLocaleIdFor(String language) {
+    return switch (language.toUpperCase()) {
+      'PT' => 'pt_BR',
+      'ES' => 'es_ES',
+      'FR' => 'fr_FR',
+      'IT' => 'it_IT',
+      'DE' => 'de_DE',
+      'NL' => 'nl_NL',
+      'SV' => 'sv_SE',
+      _ => 'en_US',
+    };
   }
 
   Future<void> _resetPlayer() async {
@@ -122,8 +301,12 @@ class _DictationSessionPageState extends ConsumerState<DictationSessionPage> {
     final fileFuture = cache.ensureFile(
       text: item.promptText,
       language: item.language,
-      resolveUrl: () =>
-          repo.fetchAudioUrl(text: item.promptText, language: item.language),
+      voiceGender: widget.voiceGender,
+      resolveUrl: () => repo.fetchAudioUrl(
+        text: item.promptText,
+        language: item.language,
+        voiceGender: widget.voiceGender,
+      ),
     );
     final next = _index + 1;
     if (next < widget.items.length) {
@@ -133,10 +316,12 @@ class _DictationSessionPageState extends ConsumerState<DictationSessionPage> {
             .ensureFile(
               text: upcoming.promptText,
               language: upcoming.language,
+              voiceGender: widget.voiceGender,
               priority: TtsFetchPriority.background,
               resolveUrl: () => repo.fetchAudioUrl(
                 text: upcoming.promptText,
                 language: upcoming.language,
+                voiceGender: widget.voiceGender,
               ),
             )
             .then((_) {}, onError: (_, _) {}),
@@ -318,6 +503,7 @@ class _DictationSessionPageState extends ConsumerState<DictationSessionPage> {
     );
     if (confirmed != true || !mounted) return;
     await _resetPlayer();
+    await _stopListening();
     if (!mounted) return;
     setState(() {
       _index = 0;
@@ -328,6 +514,7 @@ class _DictationSessionPageState extends ConsumerState<DictationSessionPage> {
       _translationVisible = false;
       _translationError = null;
       _selectedText = null;
+      _speechError = null;
       _answerController.clear();
       _audioError = null;
     });
@@ -348,6 +535,7 @@ class _DictationSessionPageState extends ConsumerState<DictationSessionPage> {
   }
 
   Future<void> _check() async {
+    await _stopListening();
     final local = scoreDictationAnswer(
       _currentItem.promptText,
       _answerController.text,
@@ -463,6 +651,7 @@ class _DictationSessionPageState extends ConsumerState<DictationSessionPage> {
       );
     }
     await _resetPlayer();
+    await _stopListening();
     setState(() {
       _saving = false;
       _index += 1;
@@ -471,6 +660,7 @@ class _DictationSessionPageState extends ConsumerState<DictationSessionPage> {
       _retriedAlmost = false;
       _translationError = null;
       _selectedText = null;
+      _speechError = null;
       _answerController.clear();
       _audioError = null;
     });
@@ -569,6 +759,8 @@ class _DictationSessionPageState extends ConsumerState<DictationSessionPage> {
                       onPlay: _playAudio,
                     ),
                     const SizedBox(height: AppSpacing.sm),
+                    _SeekBar(player: _player),
+                    const SizedBox(height: AppSpacing.xs),
                     _AudioControlsRow(
                       playbackRate: _playbackRate,
                       onNudgeRate: _nudgeRate,
@@ -591,28 +783,37 @@ class _DictationSessionPageState extends ConsumerState<DictationSessionPage> {
                       ),
                     ],
                     const SizedBox(height: AppSpacing.lg),
-                    TextField(
-                      controller: _answerController,
-                      enabled: checked == null,
-                      decoration: _answerDecoration,
-                      minLines: 3,
-                      maxLines: 5,
-                      textInputAction: TextInputAction.done,
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodyLarge?.copyWith(color: AppColors.heading),
-                      onSubmitted: (_) {
-                        if (canCheck) unawaited(_check());
-                      },
-                    ),
-                    const SizedBox(height: AppSpacing.xs),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: Text(
-                        '${_answerController.text.length} caracteres',
-                        style: Theme.of(context).textTheme.bodySmall,
+                    if (_isSpeakTask && checked == null) ...[
+                      _SpeakAnswerCard(
+                        listening: _listening,
+                        heard: _answerController.text,
+                        error: _speechError,
+                        onToggle: _toggleListening,
                       ),
-                    ),
+                    ] else ...[
+                      TextField(
+                        controller: _answerController,
+                        enabled: checked == null,
+                        decoration: _answerDecoration,
+                        minLines: 3,
+                        maxLines: 5,
+                        textInputAction: TextInputAction.done,
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          color: AppColors.heading,
+                        ),
+                        onSubmitted: (_) {
+                          if (canCheck) unawaited(_check());
+                        },
+                      ),
+                      const SizedBox(height: AppSpacing.xs),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          '${_answerController.text.length} caracteres',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                    ],
                     if (checked != null) ...[
                       const SizedBox(height: AppSpacing.lg),
                       if (almost)
@@ -826,6 +1027,66 @@ class _ListenCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+String _formatAudioDuration(Duration duration) {
+  final minutes = duration.inMinutes;
+  final seconds = duration.inSeconds % 60;
+  return '$minutes:${seconds.toString().padLeft(2, '0')}';
+}
+
+class _SeekBar extends StatelessWidget {
+  const _SeekBar({required this.player});
+
+  final AudioPlayer player;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<Duration>(
+      stream: player.positionStream,
+      builder: (context, snapshot) {
+        final position = snapshot.data ?? Duration.zero;
+        final duration = player.duration ?? Duration.zero;
+        final maxMs = duration.inMilliseconds
+            .toDouble()
+            .clamp(1, double.infinity)
+            .toDouble();
+        final value = position.inMilliseconds.toDouble().clamp(0, maxMs).toDouble();
+        return Row(
+          children: [
+            Expanded(
+              child: SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  trackHeight: 3,
+                  thumbShape: const RoundSliderThumbShape(
+                    enabledThumbRadius: 6,
+                  ),
+                  overlayShape: const RoundSliderOverlayShape(
+                    overlayRadius: 12,
+                  ),
+                  activeTrackColor: AppColors.primary,
+                  inactiveTrackColor: AppColors.border,
+                  thumbColor: AppColors.primary,
+                ),
+                child: Slider(
+                  value: value,
+                  max: maxMs,
+                  onChanged: duration == Duration.zero
+                      ? null
+                      : (next) =>
+                            player.seek(Duration(milliseconds: next.round())),
+                ),
+              ),
+            ),
+            Text(
+              _formatAudioDuration(duration == Duration.zero ? position : duration),
+              style: Theme.of(context).textTheme.labelMedium,
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -1262,6 +1523,164 @@ class _SaveWordFromDictationSheetState
                   : const Text('Salvar'),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SpeakAnswerCard extends StatelessWidget {
+  const _SpeakAnswerCard({
+    required this.listening,
+    required this.heard,
+    required this.error,
+    required this.onToggle,
+  });
+
+  final bool listening;
+  final String heard;
+  final String? error;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        color: AppColors.background,
+        borderRadius: _cardRadius,
+        border: Border.fromBorderSide(BorderSide(color: AppColors.border)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        child: Column(
+          children: [
+            Text(
+              'Diga a frase que você ouviu.',
+              style: textTheme.bodySmall,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            _SpeakMicButton(listening: listening, onPressed: onToggle),
+            if (listening) ...[
+              const SizedBox(height: AppSpacing.sm),
+              Text('Ouvindo…', style: textTheme.bodyMedium),
+            ],
+            if (heard.isNotEmpty) ...[
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                'Você disse: «$heard»',
+                style: textTheme.bodyMedium,
+                textAlign: TextAlign.center,
+              ),
+            ],
+            if (error != null) ...[
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                error!,
+                style: textTheme.bodySmall?.copyWith(
+                  color: AppColors.destructive,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SpeakMicButton extends StatefulWidget {
+  const _SpeakMicButton({required this.listening, required this.onPressed});
+
+  final bool listening;
+  final VoidCallback onPressed;
+
+  @override
+  State<_SpeakMicButton> createState() => _SpeakMicButtonState();
+}
+
+class _SpeakMicButtonState extends State<_SpeakMicButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1200),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.listening) _pulse.repeat();
+  }
+
+  @override
+  void didUpdateWidget(covariant _SpeakMicButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.listening && !_pulse.isAnimating) {
+      _pulse.repeat();
+    } else if (!widget.listening && _pulse.isAnimating) {
+      _pulse.stop();
+      _pulse.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: widget.listening ? 'Parar' : 'Falar',
+      child: GestureDetector(
+        onTap: widget.onPressed,
+        child: SizedBox(
+          width: 112,
+          height: 112,
+          child: AnimatedBuilder(
+            animation: _pulse,
+            builder: (context, child) {
+              final t = widget.listening ? _pulse.value : 0.0;
+              return Stack(
+                alignment: Alignment.center,
+                children: [
+                  Container(
+                    width: 96 + (16 * t),
+                    height: 96 + (16 * t),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: const Color(0xFFE24B4B).withValues(alpha: 0.16),
+                    ),
+                  ),
+                  Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: const Color(0xFFE24B4B).withValues(alpha: 0.28),
+                    ),
+                  ),
+                  child!,
+                ],
+              );
+            },
+            child: Container(
+              width: 64,
+              height: 64,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: Color(0xFFE24B4B),
+              ),
+              child: Icon(
+                widget.listening ? LucideIcons.pause : LucideIcons.mic,
+                color: Colors.white,
+              ),
+            ),
+          ),
         ),
       ),
     );

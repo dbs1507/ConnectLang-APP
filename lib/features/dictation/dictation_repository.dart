@@ -103,6 +103,7 @@ class DictationRepository {
   Future<String?> fetchAudioUrl({
     required String text,
     required String language,
+    String voiceGender = 'female',
   }) async {
     final response = await supabase.functions.invoke(
       'tts-generate',
@@ -110,7 +111,7 @@ class DictationRepository {
         'text': text,
         'language': language,
         'origin': 'base',
-        'voiceGender': 'female',
+        'voiceGender': voiceGender,
         'delivery': 'url',
       },
     );
